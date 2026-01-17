@@ -1,13 +1,46 @@
 """Tests for TradingOrchestrator class."""
 
 import asyncio
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.analyzers.analyzed_message import AnalyzedMessage
+from src.analyzers.sentiment_result import SentimentLabel, SentimentResult
+from src.models.social_message import SocialMessage, SourceType
 from orchestrator.models import OrchestratorState
 from orchestrator.settings import OrchestratorSettings
 from orchestrator.trading_orchestrator import TradingOrchestrator
+
+
+def make_social_message(content: str = "Test message") -> SocialMessage:
+    """Create a test social message."""
+    return SocialMessage(
+        source=SourceType.TWITTER,
+        source_id="test_123",
+        content=content,
+        author="test_user",
+        timestamp=datetime.now(),
+    )
+
+
+def make_analyzed_message(
+    confidence: float = 0.9,
+    label: str = "bullish",
+) -> AnalyzedMessage:
+    """Create a test analyzed message."""
+    # Convert string label to SentimentLabel enum
+    label_enum = SentimentLabel(label)
+    sentiment = SentimentResult(
+        label=label_enum,
+        score=confidence if label == "bullish" else 0.1,
+        confidence=confidence,
+    )
+    return AnalyzedMessage(
+        message=make_social_message(),
+        sentiment=sentiment,
+    )
 
 
 class TestTradingOrchestratorCore:
@@ -148,3 +181,48 @@ class TestTradingOrchestratorStartStop:
         with pytest.raises(RuntimeError, match="already running"):
             await orchestrator.start()
         await orchestrator.stop()
+
+
+class TestHighSignalDetection:
+    """Tests for high-signal detection."""
+
+    @pytest.fixture
+    def settings(self) -> OrchestratorSettings:
+        return OrchestratorSettings(immediate_threshold=0.85)
+
+    @pytest.fixture
+    def orchestrator(self, settings: OrchestratorSettings) -> TradingOrchestrator:
+        return TradingOrchestrator(
+            collector_manager=MagicMock(),
+            analyzer_manager=AsyncMock(),
+            technical_validator=AsyncMock(),
+            signal_scorer=MagicMock(),
+            risk_manager=MagicMock(),
+            market_gate=AsyncMock(),
+            trade_executor=AsyncMock(),
+            settings=settings,
+        )
+
+    def test_is_high_signal_true_for_high_confidence(
+        self, orchestrator: TradingOrchestrator
+    ) -> None:
+        msg = make_analyzed_message(confidence=0.9, label="bullish")
+        assert orchestrator._is_high_signal(msg) is True
+
+    def test_is_high_signal_false_for_low_confidence(
+        self, orchestrator: TradingOrchestrator
+    ) -> None:
+        msg = make_analyzed_message(confidence=0.7, label="bullish")
+        assert orchestrator._is_high_signal(msg) is False
+
+    def test_is_high_signal_false_for_neutral(
+        self, orchestrator: TradingOrchestrator
+    ) -> None:
+        msg = make_analyzed_message(confidence=0.95, label="neutral")
+        assert orchestrator._is_high_signal(msg) is False
+
+    def test_is_high_signal_at_threshold(
+        self, orchestrator: TradingOrchestrator
+    ) -> None:
+        msg = make_analyzed_message(confidence=0.85, label="bearish")
+        assert orchestrator._is_high_signal(msg) is True

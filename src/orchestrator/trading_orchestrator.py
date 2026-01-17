@@ -154,3 +154,17 @@ class TradingOrchestrator:
     async def _on_message(self, message: SocialMessage) -> ProcessResult:
         """Process incoming message (placeholder)."""
         return ProcessResult(status="buffered")
+
+    def _is_high_signal(self, msg: AnalyzedMessage) -> bool:
+        """Determine if message requires immediate processing.
+
+        Args:
+            msg: Analyzed message to check.
+
+        Returns:
+            True if high-signal (high confidence and not neutral).
+        """
+        return (
+            msg.sentiment.confidence >= self._settings.immediate_threshold
+            and msg.sentiment.label != "neutral"
+        )
