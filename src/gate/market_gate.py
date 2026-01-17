@@ -231,3 +231,91 @@ class MarketGate:
             ),
             1.0,
         )
+
+    async def _check_choppy_market(self) -> GateCheckResult:
+        """Check if market is choppy (directionless).
+
+        Uses SPY's (High - Low) / ATR(14) ratio.
+        If ratio < threshold, market is considered choppy.
+
+        Returns:
+            GateCheckResult indicating if choppy check passed.
+        """
+        data: dict[str, Any] = {
+            "threshold": self._settings.choppy_atr_ratio_threshold,
+        }
+
+        # Skip if disabled
+        if not self._settings.choppy_detection_enabled:
+            data["status"] = "disabled"
+            return GateCheckResult(
+                name="choppy_market",
+                passed=True,
+                reason=None,
+                data=data,
+            )
+
+        try:
+            # Get today's SPY bar for high/low
+            bars = await self._alpaca.get_bars("SPY", timeframe="1Day", limit=1)
+            if not bars:
+                data["status"] = "no_data"
+                return GateCheckResult(
+                    name="choppy_market",
+                    passed=False,
+                    reason="No SPY bar data available",
+                    data=data,
+                )
+
+            today_bar = bars[0]
+            day_high = today_bar.get("high", 0)
+            day_low = today_bar.get("low", 0)
+            day_range = day_high - day_low
+
+            # Get ATR
+            atr = await self._alpaca.get_atr("SPY", period=14)
+
+            data["day_high"] = day_high
+            data["day_low"] = day_low
+            data["day_range"] = day_range
+            data["atr"] = atr
+
+            # Calculate ratio
+            if atr <= 0:
+                data["status"] = "invalid_atr"
+                return GateCheckResult(
+                    name="choppy_market",
+                    passed=False,
+                    reason="Invalid ATR value",
+                    data=data,
+                )
+
+            ratio = day_range / atr
+            data["ratio"] = ratio
+
+            # Check if choppy
+            if ratio < self._settings.choppy_atr_ratio_threshold:
+                data["status"] = "choppy"
+                return GateCheckResult(
+                    name="choppy_market",
+                    passed=False,
+                    reason=f"Choppy market detected (ratio {ratio:.2f} < {self._settings.choppy_atr_ratio_threshold})",
+                    data=data,
+                )
+
+            data["status"] = "trending"
+            return GateCheckResult(
+                name="choppy_market",
+                passed=True,
+                reason=None,
+                data=data,
+            )
+
+        except Exception as e:
+            data["error"] = str(e)
+            return GateCheckResult(
+                name="choppy_market",
+                passed=False,
+                reason=f"Error checking choppy market: {e}",
+                data=data,
+            )

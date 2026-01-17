@@ -269,3 +269,86 @@ class TestMarketGateVix:
         assert result.passed is False
         assert factor == 0.0
         assert "unavailable" in result.reason.lower()
+
+
+class TestMarketGateChoppy:
+    """Tests for choppy market check."""
+
+    @pytest.fixture
+    def settings(self) -> MarketGateSettings:
+        """Default settings for tests."""
+        return MarketGateSettings(
+            choppy_detection_enabled=True,
+            choppy_atr_ratio_threshold=1.5,
+        )
+
+    @pytest.fixture
+    def mock_vix_fetcher(self) -> MagicMock:
+        """Mock VIX fetcher."""
+        fetcher = MagicMock()
+        fetcher.fetch_vix.return_value = 18.0
+        return fetcher
+
+    @pytest.mark.asyncio
+    async def test_choppy_pass_when_ratio_above_threshold(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Choppy check passes when range/ATR ratio above threshold."""
+        mock_alpaca = AsyncMock()
+        # Day range = 5, ATR = 2.5, ratio = 2.0 (above 1.5 threshold)
+        mock_alpaca.get_bars.return_value = [
+            {"high": 455, "low": 450, "close": 453},
+        ]
+        mock_alpaca.get_atr.return_value = 2.5
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_choppy_market()
+
+        assert result.passed is True
+        assert result.name == "choppy_market"
+
+    @pytest.mark.asyncio
+    async def test_choppy_fail_when_ratio_below_threshold(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Choppy check fails when range/ATR ratio below threshold."""
+        mock_alpaca = AsyncMock()
+        # Day range = 2, ATR = 2.5, ratio = 0.8 (below 1.5 threshold)
+        mock_alpaca.get_bars.return_value = [
+            {"high": 452, "low": 450, "close": 451},
+        ]
+        mock_alpaca.get_atr.return_value = 2.5
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_choppy_market()
+
+        assert result.passed is False
+        assert "choppy" in result.reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_choppy_skip_when_disabled(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Choppy check passes automatically when disabled."""
+        settings.choppy_detection_enabled = False
+        mock_alpaca = AsyncMock()
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_choppy_market()
+
+        assert result.passed is True
+        assert "disabled" in result.data.get("status", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_choppy_handles_api_error(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Choppy check fails gracefully on API error."""
+        mock_alpaca = AsyncMock()
+        mock_alpaca.get_bars.side_effect = Exception("API error")
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_choppy_market()
+
+        assert result.passed is False
+        assert "error" in result.reason.lower()
