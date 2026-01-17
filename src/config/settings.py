@@ -69,8 +69,8 @@ class SentimentAnalyzerSettings(BaseModel):
     """Settings for sentiment analyzer."""
 
     model: str = "StephanAkkerman/FinTwitBERT-sentiment"
-    batch_size: int = 32
-    min_confidence: float = 0.7
+    batch_size: int = Field(default=32, ge=1, le=256)
+    min_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
 
 
 class ClaudeAnalyzerSettings(BaseModel):
@@ -78,8 +78,8 @@ class ClaudeAnalyzerSettings(BaseModel):
 
     enabled: bool = True
     model: str = "claude-sonnet-4-20250514"
-    max_tokens: int = 1000
-    rate_limit_per_minute: int = 20
+    max_tokens: int = Field(default=1000, ge=100, le=4096)
+    rate_limit_per_minute: int = Field(default=20, gt=0, le=100)
     use_for: list[str] = Field(
         default_factory=lambda: [
             "catalyst_classification",
