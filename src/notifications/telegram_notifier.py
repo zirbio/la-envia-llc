@@ -5,8 +5,12 @@ import logging
 
 from telegram import Bot
 
+from execution.models import ExecutionResult
+from risk.models import DailyRiskState
+from scoring.models import TradeRecommendation
+
 from .alert_formatter import AlertFormatter
-from .models import Alert
+from .models import Alert, AlertType
 from .settings import NotificationSettings
 
 logger = logging.getLogger(__name__)
@@ -87,3 +91,76 @@ class TelegramNotifier:
     def is_enabled(self) -> bool:
         """Check if notifications are enabled and configured."""
         return self._settings.enabled and self._settings.is_configured
+
+    async def send_new_signal(self, recommendation: TradeRecommendation) -> bool:
+        """Send a new signal alert.
+
+        Args:
+            recommendation: The trade recommendation.
+
+        Returns:
+            True if sent successfully.
+        """
+        message = self._formatter.format_new_signal(recommendation)
+        alert = Alert(
+            alert_type=AlertType.NEW_SIGNAL,
+            symbol=recommendation.symbol,
+            message=message,
+        )
+        return await self.send_alert(alert)
+
+    async def send_execution(
+        self, result: ExecutionResult, is_entry: bool
+    ) -> bool:
+        """Send an execution alert.
+
+        Args:
+            result: The execution result.
+            is_entry: True for entry, False for exit.
+
+        Returns:
+            True if sent successfully.
+        """
+        message = self._formatter.format_execution(result, is_entry)
+        alert_type = AlertType.ENTRY_EXECUTED if is_entry else AlertType.EXIT_EXECUTED
+        alert = Alert(
+            alert_type=alert_type,
+            symbol=result.symbol,
+            message=message,
+        )
+        return await self.send_alert(alert)
+
+    async def send_circuit_breaker(
+        self, reason: str, risk_state: DailyRiskState
+    ) -> bool:
+        """Send a circuit breaker alert.
+
+        Args:
+            reason: Why the circuit breaker was triggered.
+            risk_state: Current risk state.
+
+        Returns:
+            True if sent successfully.
+        """
+        message = self._formatter.format_circuit_breaker(reason, risk_state)
+        alert = Alert(
+            alert_type=AlertType.CIRCUIT_BREAKER,
+            message=message,
+        )
+        return await self.send_alert(alert)
+
+    async def send_daily_summary(self, stats: dict) -> bool:
+        """Send daily trading summary.
+
+        Args:
+            stats: Dictionary with daily statistics.
+
+        Returns:
+            True if sent successfully.
+        """
+        message = self._formatter.format_daily_summary(stats)
+        alert = Alert(
+            alert_type=AlertType.DAILY_SUMMARY,
+            message=message,
+        )
+        return await self.send_alert(alert)

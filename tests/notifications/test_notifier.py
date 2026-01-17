@@ -183,3 +183,160 @@ class TestTelegramNotifierSendAlert:
         result = await notifier.send_alert(alert)
 
         assert result is False
+
+
+class TestTelegramNotifierHelpers:
+    """Tests for helper methods."""
+
+    @pytest.mark.asyncio
+    async def test_send_new_signal(self):
+        """send_new_signal formats and sends signal."""
+        from notifications.alert_formatter import AlertFormatter
+        from notifications.settings import NotificationSettings
+        from notifications.telegram_notifier import TelegramNotifier
+        from scoring.models import (
+            Direction,
+            ScoreComponents,
+            ScoreTier,
+            TradeRecommendation,
+        )
+
+        settings = NotificationSettings(
+            telegram_token="token",
+            chat_id="12345",
+        )
+        notifier = TelegramNotifier(settings=settings, formatter=AlertFormatter())
+
+        mock_bot = MagicMock()
+        mock_bot.send_message = AsyncMock(return_value=MagicMock())
+        notifier._bot = mock_bot
+
+        rec = TradeRecommendation(
+            symbol="AAPL",
+            direction=Direction.LONG,
+            score=85.0,
+            tier=ScoreTier.STRONG,
+            position_size_percent=5.0,
+            entry_price=178.50,
+            stop_loss=176.00,
+            take_profit=183.00,
+            risk_reward_ratio=1.8,
+            components=ScoreComponents(
+                sentiment_score=90.0,
+                technical_score=80.0,
+                sentiment_weight=0.4,
+                technical_weight=0.35,
+                confluence_bonus=0.1,
+                credibility_multiplier=1.0,
+                time_factor=1.0,
+            ),
+            reasoning="High sentiment",
+            timestamp=datetime.now(),
+        )
+
+        result = await notifier.send_new_signal(rec)
+
+        assert result is True
+        call_args = mock_bot.send_message.call_args
+        assert "AAPL" in call_args.kwargs["text"]
+        assert "LONG" in call_args.kwargs["text"]
+
+    @pytest.mark.asyncio
+    async def test_send_execution_entry(self):
+        """send_execution sends entry execution."""
+        from execution.models import ExecutionResult
+        from notifications.alert_formatter import AlertFormatter
+        from notifications.settings import NotificationSettings
+        from notifications.telegram_notifier import TelegramNotifier
+
+        settings = NotificationSettings(
+            telegram_token="token",
+            chat_id="12345",
+        )
+        notifier = TelegramNotifier(settings=settings, formatter=AlertFormatter())
+
+        mock_bot = MagicMock()
+        mock_bot.send_message = AsyncMock(return_value=MagicMock())
+        notifier._bot = mock_bot
+
+        result = ExecutionResult(
+            success=True,
+            order_id="order123",
+            symbol="AAPL",
+            side="buy",
+            quantity=50,
+            filled_price=178.52,
+            error_message=None,
+            timestamp=datetime.now(),
+        )
+
+        sent = await notifier.send_execution(result, is_entry=True)
+
+        assert sent is True
+        call_args = mock_bot.send_message.call_args
+        assert "ENTRY" in call_args.kwargs["text"]
+
+    @pytest.mark.asyncio
+    async def test_send_circuit_breaker(self):
+        """send_circuit_breaker sends circuit breaker alert."""
+        from datetime import date
+
+        from notifications.alert_formatter import AlertFormatter
+        from notifications.settings import NotificationSettings
+        from notifications.telegram_notifier import TelegramNotifier
+        from risk.models import DailyRiskState
+
+        settings = NotificationSettings(
+            telegram_token="token",
+            chat_id="12345",
+        )
+        notifier = TelegramNotifier(settings=settings, formatter=AlertFormatter())
+
+        mock_bot = MagicMock()
+        mock_bot.send_message = AsyncMock(return_value=MagicMock())
+        notifier._bot = mock_bot
+
+        state = DailyRiskState(
+            date=date.today(),
+            realized_pnl=-450.0,
+            unrealized_pnl=0.0,
+            trades_today=5,
+            is_blocked=True,
+        )
+
+        sent = await notifier.send_circuit_breaker("Daily limit", state)
+
+        assert sent is True
+        call_args = mock_bot.send_message.call_args
+        assert "CIRCUIT BREAKER" in call_args.kwargs["text"]
+
+    @pytest.mark.asyncio
+    async def test_send_daily_summary(self):
+        """send_daily_summary sends summary."""
+        from notifications.alert_formatter import AlertFormatter
+        from notifications.settings import NotificationSettings
+        from notifications.telegram_notifier import TelegramNotifier
+
+        settings = NotificationSettings(
+            telegram_token="token",
+            chat_id="12345",
+        )
+        notifier = TelegramNotifier(settings=settings, formatter=AlertFormatter())
+
+        mock_bot = MagicMock()
+        mock_bot.send_message = AsyncMock(return_value=MagicMock())
+        notifier._bot = mock_bot
+
+        stats = {
+            "date": "2026-01-17",
+            "total_trades": 5,
+            "winners": 3,
+            "losers": 2,
+            "gross_pnl": 285.0,
+        }
+
+        sent = await notifier.send_daily_summary(stats)
+
+        assert sent is True
+        call_args = mock_bot.send_message.call_args
+        assert "DAILY SUMMARY" in call_args.kwargs["text"]
