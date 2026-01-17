@@ -179,7 +179,7 @@ uv run python main.py
 ### 5.2 Iniciar Dashboard
 
 ```bash
-uv run streamlit run src/dashboard/app.py --server.port 8501
+uv run streamlit run src/dashboard/Home.py --server.port 8501
 ```
 
 ### 5.3 Ejecutar Tests
@@ -262,19 +262,23 @@ result = await validator.validate(analyzed_message)
 Calcula score final y genera recomendaciones.
 
 ```python
-from src.scoring import ScoringEngine
+from src.scoring import SignalScorer
 
-engine = ScoringEngine(settings)
-recommendation = engine.calculate_recommendation(
-    sentiment_result=sentiment,
-    technical_result=technical,
-    source="unusual_whales"
+scorer = SignalScorer(
+    credibility_manager=credibility_manager,
+    time_calculator=time_calculator,
+    confluence_detector=confluence_detector,
+    weight_calculator=weight_calculator,
+    recommendation_builder=recommendation_builder,
+)
+recommendation = scorer.score(
+    validated_signal=validated_signal,
+    current_price=140.75,
 )
 
 # recommendation.final_score = 85
 # recommendation.tier = "strong"
 # recommendation.position_size_percent = 100
-# recommendation.stop_loss, recommendation.take_profit
 ```
 
 ### 6.5 Market Gate (src/gate/)
@@ -312,12 +316,16 @@ decision = risk.evaluate_trade(recommendation)
 Ejecuta trades via Alpaca.
 
 ```python
-from src.execution import ExecutionManager
+from src.execution import TradeExecutor
 
-execution = ExecutionManager(alpaca_client, risk_manager)
-result = await execution.execute_signal(signal)
+executor = TradeExecutor(alpaca_client, risk_manager)
+result = await executor.execute(
+    recommendation=recommendation,
+    risk_result=risk_result,
+    gate_status=gate_status,
+)
 
-# result.order_id, result.filled_price, result.status
+# result.success, result.order_id, result.filled_price
 ```
 
 ### 6.8 Journal Manager (src/journal/)
@@ -349,10 +357,10 @@ http://localhost:8501
 
 ### 7.2 Páginas Disponibles
 
-1. **Live Signals** - Señales en tiempo real
-2. **Positions** - Posiciones abiertas
-3. **Journal** - Historial de trades
-4. **Analytics** - Métricas y análisis
+1. **Monitoreo** - Monitoreo en tiempo real (posiciones, señales, circuit breakers)
+2. **Análisis** - Análisis de rendimiento (métricas, gráficos, patrones)
+3. **Control** - Control del sistema (parámetros de riesgo, gate)
+4. **Alertas** - Centro de alertas (historial, filtros)
 
 ### 7.3 Alertas en Dashboard
 
@@ -576,7 +584,7 @@ uv run pytest tests/path/test_file.py -v -s
 uv run python main.py
 
 # Iniciar dashboard
-uv run streamlit run src/dashboard/app.py
+uv run streamlit run src/dashboard/Home.py
 
 # Ejecutar tests
 uv run pytest

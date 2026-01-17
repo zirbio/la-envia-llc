@@ -210,8 +210,7 @@ model = AutoModelForSequenceClassification.from_pretrained(model_name)
 El dashboard necesita un archivo de entrada:
 
 ```bash
-# Crear src/dashboard/app.py con Streamlit pages
-uv run streamlit run src/dashboard/app.py --server.port 8501
+uv run streamlit run src/dashboard/Home.py --server.port 8501
 ```
 
 ---
