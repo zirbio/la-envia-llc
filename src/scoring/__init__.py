@@ -8,6 +8,7 @@ from src.scoring.models import (
 )
 from src.scoring.source_credibility import SourceCredibilityManager
 from src.scoring.time_factors import TimeFactorCalculator
+from src.scoring.confluence_detector import ConfluenceDetector
 
 __all__ = [
     "Direction",
@@ -16,4 +17,5 @@ __all__ = [
     "TradeRecommendation",
     "SourceCredibilityManager",
     "TimeFactorCalculator",
+    "ConfluenceDetector",
 ]
