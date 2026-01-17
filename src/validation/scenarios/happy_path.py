@@ -1,7 +1,11 @@
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from src.models.social_message import SocialMessage, SourceType
 from src.validation.scenarios.base import Scenario
+
+if TYPE_CHECKING:
+    from src.validation.simulator_engine import SimulatorEngine
 
 
 class BullishSignalExecutesTrade(Scenario):
@@ -22,8 +26,8 @@ class BullishSignalExecutesTrade(Scenario):
     async def setup(self) -> None:
         pass
 
-    async def execute(self, engine) -> None:
+    async def execute(self, engine: "SimulatorEngine") -> None:
         pass
 
-    async def verify(self, engine) -> bool:
+    async def verify(self, engine: "SimulatorEngine") -> bool:
         return True
