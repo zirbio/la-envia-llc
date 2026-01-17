@@ -467,3 +467,73 @@ class TestImmediateProcessing:
 
         assert result.status == "gate_closed"
         mock_components["trade_executor"].execute.assert_not_called()
+
+
+class TestBatchProcessing:
+    """Tests for batch processing logic."""
+
+    @pytest.fixture
+    def settings(self) -> OrchestratorSettings:
+        return OrchestratorSettings(min_consensus=0.6)
+
+    @pytest.fixture
+    def orchestrator(self, settings: OrchestratorSettings) -> TradingOrchestrator:
+        return TradingOrchestrator(
+            collector_manager=MagicMock(),
+            analyzer_manager=AsyncMock(),
+            technical_validator=AsyncMock(),
+            signal_scorer=MagicMock(),
+            risk_manager=MagicMock(),
+            market_gate=AsyncMock(),
+            trade_executor=AsyncMock(),
+            settings=settings,
+        )
+
+    def test_aggregate_sentiment_bullish_consensus(
+        self, orchestrator: TradingOrchestrator
+    ) -> None:
+        """Aggregation calculates bullish consensus correctly."""
+        messages = [
+            make_analyzed_message(confidence=0.8, label="bullish"),
+            make_analyzed_message(confidence=0.7, label="bullish"),
+            make_analyzed_message(confidence=0.6, label="bearish"),
+        ]
+
+        agg = orchestrator._aggregate_sentiment("AAPL", messages)
+
+        assert agg.consensus_label == "bullish"
+        assert agg.bullish_count == 2
+        assert agg.bearish_count == 1
+        assert agg.consensus_strength == pytest.approx(2/3, rel=0.01)
+
+    def test_aggregate_sentiment_below_consensus_threshold(
+        self, orchestrator: TradingOrchestrator
+    ) -> None:
+        """Aggregation with weak consensus."""
+        messages = [
+            make_analyzed_message(confidence=0.8, label="bullish"),
+            make_analyzed_message(confidence=0.7, label="bearish"),
+            make_analyzed_message(confidence=0.6, label="neutral"),
+        ]
+
+        agg = orchestrator._aggregate_sentiment("AAPL", messages)
+
+        # Each has 1/3, no strong consensus
+        assert agg.consensus_strength == pytest.approx(1/3, rel=0.01)
+
+    def test_group_by_symbol(self, orchestrator: TradingOrchestrator) -> None:
+        """Messages are grouped by symbol correctly."""
+        msg1 = make_analyzed_message()
+        msg1.message.content = "Buy $AAPL now!"
+        msg2 = make_analyzed_message()
+        msg2.message.content = "Sell $TSLA soon!"
+        msg3 = make_analyzed_message()
+        msg3.message.content = "Another $AAPL play!"
+
+        orchestrator._message_buffer = [msg1, msg2, msg3]
+        grouped = orchestrator._group_by_symbol()
+
+        assert "AAPL" in grouped
+        assert "TSLA" in grouped
+        assert len(grouped["AAPL"]) == 2
+        assert len(grouped["TSLA"]) == 1

@@ -9,7 +9,7 @@ from collectors.collector_manager import CollectorManager
 from execution.trade_executor import TradeExecutor
 from gate.market_gate import MarketGate
 from models.social_message import SocialMessage
-from orchestrator.models import OrchestratorState, ProcessResult
+from orchestrator.models import AggregatedSentiment, OrchestratorState, ProcessResult
 from orchestrator.settings import OrchestratorSettings
 from risk.risk_manager import RiskManager
 from scoring.models import ScoreTier
@@ -146,8 +146,95 @@ class TradingOrchestrator:
             await self._process_batch()
 
     async def _process_batch(self) -> None:
-        """Process current batch buffer (placeholder)."""
+        """Process current batch buffer.
+
+        Groups messages by symbol, aggregates sentiment,
+        and processes symbols with sufficient consensus.
+        """
+        if not self._message_buffer:
+            return
+
+        messages = self._message_buffer.copy()
         self._message_buffer.clear()
+
+        logger.info(f"Processing batch of {len(messages)} messages")
+
+        # Group by symbol
+        by_symbol = self._group_by_symbol_from_list(messages)
+
+        # Process each symbol
+        for symbol, symbol_messages in by_symbol.items():
+            aggregated = self._aggregate_sentiment(symbol, symbol_messages)
+
+            # Only process if consensus is strong enough
+            if aggregated.consensus_strength >= self._settings.min_consensus:
+                await self._process_symbol_batch(symbol, aggregated)
+            else:
+                logger.debug(
+                    f"Skipping {symbol}: consensus {aggregated.consensus_strength:.2f} "
+                    f"< {self._settings.min_consensus}"
+                )
+
+    def _group_by_symbol(self) -> dict[str, list[AnalyzedMessage]]:
+        """Group buffer messages by symbol."""
+        return self._group_by_symbol_from_list(self._message_buffer)
+
+    def _group_by_symbol_from_list(
+        self, messages: list[AnalyzedMessage]
+    ) -> dict[str, list[AnalyzedMessage]]:
+        """Group messages by their primary symbol."""
+        grouped: dict[str, list[AnalyzedMessage]] = {}
+
+        for msg in messages:
+            tickers = msg.get_tickers()
+            if tickers:
+                symbol = tickers[0]
+                if symbol not in grouped:
+                    grouped[symbol] = []
+                grouped[symbol].append(msg)
+
+        return grouped
+
+    def _aggregate_sentiment(
+        self, symbol: str, messages: list[AnalyzedMessage]
+    ) -> AggregatedSentiment:
+        """Aggregate sentiments from multiple messages."""
+        bullish = sum(1 for m in messages if m.sentiment.label == "bullish")
+        bearish = sum(1 for m in messages if m.sentiment.label == "bearish")
+        neutral = sum(1 for m in messages if m.sentiment.label == "neutral")
+        total = len(messages)
+
+        # Determine consensus
+        counts = {"bullish": bullish, "bearish": bearish, "neutral": neutral}
+        consensus_label = max(counts, key=counts.get)
+        consensus_count = counts[consensus_label]
+        consensus_strength = consensus_count / total if total > 0 else 0.0
+
+        # Average confidence
+        avg_confidence = (
+            sum(m.sentiment.confidence for m in messages) / total if total > 0 else 0.0
+        )
+
+        return AggregatedSentiment(
+            symbol=symbol,
+            bullish_count=bullish,
+            bearish_count=bearish,
+            neutral_count=neutral,
+            total_count=total,
+            consensus_label=consensus_label,
+            consensus_strength=consensus_strength,
+            avg_confidence=avg_confidence,
+        )
+
+    async def _process_symbol_batch(
+        self, symbol: str, aggregated: AggregatedSentiment
+    ) -> None:
+        """Process aggregated batch for a symbol."""
+        logger.info(
+            f"Processing batch for {symbol}: {aggregated.consensus_label} "
+            f"({aggregated.consensus_strength:.2%})"
+        )
+        # TODO: Create synthetic analyzed message from aggregation and process
 
     def _on_message_callback(self, message: SocialMessage) -> None:
         """Sync callback wrapper for collector manager."""
