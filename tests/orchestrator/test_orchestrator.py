@@ -537,3 +537,122 @@ class TestBatchProcessing:
         assert "TSLA" in grouped
         assert len(grouped["AAPL"]) == 2
         assert len(grouped["TSLA"]) == 1
+
+
+class TestGracefulDegradation:
+    """Tests for graceful degradation behavior."""
+
+    @pytest.fixture
+    def settings(self) -> OrchestratorSettings:
+        return OrchestratorSettings(
+            continue_without_validator=True,
+            gate_fail_safe_closed=True,
+        )
+
+    @pytest.fixture
+    def mock_components(self) -> dict:
+        return {
+            "collector_manager": MagicMock(),
+            "analyzer_manager": AsyncMock(),
+            "technical_validator": AsyncMock(),
+            "signal_scorer": MagicMock(),
+            "risk_manager": MagicMock(),
+            "market_gate": AsyncMock(),
+            "trade_executor": AsyncMock(),
+        }
+
+    @pytest.fixture
+    def orchestrator(self, mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
+        return TradingOrchestrator(
+            collector_manager=mock_components["collector_manager"],
+            analyzer_manager=mock_components["analyzer_manager"],
+            technical_validator=mock_components["technical_validator"],
+            signal_scorer=mock_components["signal_scorer"],
+            risk_manager=mock_components["risk_manager"],
+            market_gate=mock_components["market_gate"],
+            trade_executor=mock_components["trade_executor"],
+            settings=settings,
+        )
+
+    @pytest.mark.asyncio
+    async def test_validator_error_continues_when_enabled(
+        self, orchestrator: TradingOrchestrator, mock_components: dict
+    ) -> None:
+        """Validator error doesn't stop processing when continue_without_validator=True."""
+        mock_components["technical_validator"].validate.side_effect = Exception("Validator down")
+        mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.STRONG)
+        mock_components["risk_manager"].check_trade.return_value = make_risk_result(True)
+        mock_components["market_gate"].check.return_value = make_gate_status(True)
+        mock_components["trade_executor"].execute.return_value = MagicMock(success=True)
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        # Should continue and execute despite validator error
+        assert result.status == "executed"
+
+    @pytest.mark.asyncio
+    async def test_gate_error_closes_when_fail_safe(
+        self, orchestrator: TradingOrchestrator, mock_components: dict
+    ) -> None:
+        """Gate error treated as closed when gate_fail_safe_closed=True."""
+        mock_components["technical_validator"].validate.return_value = make_validated_signal(True)
+        mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.STRONG)
+        mock_components["risk_manager"].check_trade.return_value = make_risk_result(True)
+        mock_components["market_gate"].check.side_effect = Exception("Gate API down")
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "gate_closed"
+        mock_components["trade_executor"].execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_validator_error_stops_when_disabled(
+        self, mock_components: dict
+    ) -> None:
+        """Validator error stops processing when continue_without_validator=False."""
+        settings = OrchestratorSettings(continue_without_validator=False)
+        orchestrator = TradingOrchestrator(
+            collector_manager=mock_components["collector_manager"],
+            analyzer_manager=mock_components["analyzer_manager"],
+            technical_validator=mock_components["technical_validator"],
+            signal_scorer=mock_components["signal_scorer"],
+            risk_manager=mock_components["risk_manager"],
+            market_gate=mock_components["market_gate"],
+            trade_executor=mock_components["trade_executor"],
+            settings=settings,
+        )
+
+        mock_components["technical_validator"].validate.side_effect = Exception("Validator down")
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "error"
+        assert "Validation error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_gate_error_returns_error_when_fail_safe_disabled(
+        self, mock_components: dict
+    ) -> None:
+        """Gate error returns error when gate_fail_safe_closed=False."""
+        settings = OrchestratorSettings(gate_fail_safe_closed=False)
+        orchestrator = TradingOrchestrator(
+            collector_manager=mock_components["collector_manager"],
+            analyzer_manager=mock_components["analyzer_manager"],
+            technical_validator=mock_components["technical_validator"],
+            signal_scorer=mock_components["signal_scorer"],
+            risk_manager=mock_components["risk_manager"],
+            market_gate=mock_components["market_gate"],
+            trade_executor=mock_components["trade_executor"],
+            settings=settings,
+        )
+
+        mock_components["technical_validator"].validate.return_value = make_validated_signal(True)
+        mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.STRONG)
+        mock_components["risk_manager"].check_trade.return_value = make_risk_result(True)
+        mock_components["market_gate"].check.side_effect = Exception("Gate API down")
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "error"
+        assert "Gate error" in result.error
+        mock_components["trade_executor"].execute.assert_not_called()
