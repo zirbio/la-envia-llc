@@ -9,6 +9,7 @@ from src.validators.models import (
     ValidatedSignal,
     ValidationStatus,
 )
+from src.validators.options_validator import OptionsValidator
 
 __all__ = [
     "ValidationStatus",
@@ -17,4 +18,5 @@ __all__ = [
     "TechnicalValidation",
     "ValidatedSignal",
     "IndicatorEngine",
+    "OptionsValidator",
 ]
