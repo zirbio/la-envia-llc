@@ -38,3 +38,17 @@ class TestSimulatorEngine:
         assert result.passed is True
         assert result.signals_generated == 5
         assert result.trades_executed == 3
+
+    def test_simulation_result_defaults(self):
+        """Verify SimulationResult has correct defaults."""
+        result = SimulationResult(passed=False)
+        assert result.signals_generated == 0
+        assert result.trades_executed == 0
+        assert result.errors == []
+
+    @pytest.mark.asyncio
+    async def test_run_scenario_not_implemented(self, mock_components):
+        """Verify run_scenario raises NotImplementedError."""
+        engine = SimulatorEngine(**mock_components)
+        with pytest.raises(NotImplementedError):
+            await engine.run_scenario(None)
