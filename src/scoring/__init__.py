@@ -7,6 +7,7 @@ from src.scoring.models import (
     TradeRecommendation,
 )
 from src.scoring.source_credibility import SourceCredibilityManager
+from src.scoring.time_factors import TimeFactorCalculator
 
 __all__ = [
     "Direction",
@@ -14,4 +15,5 @@ __all__ = [
     "ScoreComponents",
     "TradeRecommendation",
     "SourceCredibilityManager",
+    "TimeFactorCalculator",
 ]
