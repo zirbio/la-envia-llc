@@ -8,7 +8,8 @@ from analyzers.analyzer_manager import AnalyzerManager
 from collectors.collector_manager import CollectorManager
 from execution.trade_executor import TradeExecutor
 from gate.market_gate import MarketGate
-from orchestrator.models import OrchestratorState
+from models.social_message import SocialMessage
+from orchestrator.models import OrchestratorState, ProcessResult
 from orchestrator.settings import OrchestratorSettings
 from risk.risk_manager import RiskManager
 from scoring.signal_scorer import SignalScorer
@@ -60,3 +61,96 @@ class TradingOrchestrator:
     def is_running(self) -> bool:
         """Return True if the orchestrator is in RUNNING state."""
         return self._state == OrchestratorState.RUNNING
+
+    async def start(self) -> None:
+        """Start the orchestrator."""
+        if self._state != OrchestratorState.STOPPED:
+            raise RuntimeError("Orchestrator already running")
+
+        self._state = OrchestratorState.RUNNING
+        logger.info("Starting trading orchestrator")
+
+        # Connect collectors
+        await self._collector_manager.connect_all()
+
+        # Register message callback
+        self._collector_manager.add_callback(self._on_message_callback)
+
+        # Start background tasks
+        self._stream_task = asyncio.create_task(self._run_stream())
+        self._batch_task = asyncio.create_task(self._batch_processor())
+
+        logger.info("Trading orchestrator started")
+
+    async def stop(self) -> None:
+        """Stop the orchestrator gracefully."""
+        if self._state == OrchestratorState.STOPPED:
+            return
+
+        self._state = OrchestratorState.STOPPING
+        logger.info("Stopping trading orchestrator")
+
+        # Cancel tasks
+        if self._stream_task:
+            self._stream_task.cancel()
+            try:
+                await self._stream_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._batch_task:
+            self._batch_task.cancel()
+            try:
+                await self._batch_task
+            except asyncio.CancelledError:
+                pass
+
+        # Process remaining buffer
+        if self._message_buffer:
+            logger.info(f"Processing {len(self._message_buffer)} buffered messages")
+            await self._flush_buffer()
+
+        # Disconnect collectors
+        await self._collector_manager.disconnect_all()
+
+        self._state = OrchestratorState.STOPPED
+        logger.info("Trading orchestrator stopped")
+
+    async def _run_stream(self) -> None:
+        """Main stream loop."""
+        try:
+            async for message in self._collector_manager.stream_all():
+                if self._state != OrchestratorState.RUNNING:
+                    break
+                await self._on_message(message)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+
+    async def _batch_processor(self) -> None:
+        """Background task for batch processing."""
+        try:
+            while self._state == OrchestratorState.RUNNING:
+                await asyncio.sleep(self._settings.batch_interval_seconds)
+                if self._message_buffer:
+                    await self._process_batch()
+        except asyncio.CancelledError:
+            pass
+
+    async def _flush_buffer(self) -> None:
+        """Process all remaining messages in buffer."""
+        if self._message_buffer:
+            await self._process_batch()
+
+    async def _process_batch(self) -> None:
+        """Process current batch buffer (placeholder)."""
+        self._message_buffer.clear()
+
+    def _on_message_callback(self, message: SocialMessage) -> None:
+        """Sync callback wrapper for collector manager."""
+        asyncio.create_task(self._on_message(message))
+
+    async def _on_message(self, message: SocialMessage) -> ProcessResult:
+        """Process incoming message (placeholder)."""
+        return ProcessResult(status="buffered")
