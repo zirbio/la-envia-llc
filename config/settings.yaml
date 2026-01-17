@@ -144,3 +144,13 @@ market_gate:
   elevated_size_factor: 0.5
   choppy_detection_enabled: true
   choppy_atr_ratio_threshold: 1.5
+
+# Phase 8: Trading Orchestrator
+orchestrator:
+  enabled: true
+  immediate_threshold: 0.85
+  batch_interval_seconds: 60
+  min_consensus: 0.6
+  max_buffer_size: 1000
+  continue_without_validator: true
+  gate_fail_safe_closed: true
