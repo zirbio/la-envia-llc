@@ -6,6 +6,8 @@ import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from gate.market_gate import MarketGateSettings
+
 
 class SystemConfig(BaseModel):
     name: str = "Intraday Trading System"
@@ -215,6 +217,7 @@ class Settings(BaseModel):
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     risk_settings: RiskSettings = Field(default_factory=RiskSettings)
     execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
+    market_gate: MarketGateSettings = Field(default_factory=MarketGateSettings)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 

@@ -128,3 +128,19 @@ execution:
   enabled: true
   paper_mode: true
   default_time_in_force: "day"
+
+# CAPA 0: Market Condition Gate
+market_gate:
+  enabled: true
+  trading_start: "09:30"
+  trading_end: "16:00"
+  avoid_lunch: true
+  lunch_start: "11:30"
+  lunch_end: "14:00"
+  spy_min_volume: 500000
+  qqq_min_volume: 300000
+  vix_max: 30.0
+  vix_elevated: 25.0
+  elevated_size_factor: 0.5
+  choppy_detection_enabled: true
+  choppy_atr_ratio_threshold: 1.5
