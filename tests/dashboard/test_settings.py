@@ -36,3 +36,13 @@ class TestDashboardSettings:
         """Theme must be light or dark."""
         with pytest.raises(ValueError):
             DashboardSettings(theme="invalid")
+
+    def test_max_signals_validation(self) -> None:
+        """Max signals must be positive."""
+        with pytest.raises(ValueError):
+            DashboardSettings(max_signals_displayed=0)
+
+    def test_max_alerts_validation(self) -> None:
+        """Max alerts must be positive."""
+        with pytest.raises(ValueError):
+            DashboardSettings(max_alerts_displayed=0)
