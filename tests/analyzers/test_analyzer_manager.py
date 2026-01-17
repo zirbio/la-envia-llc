@@ -127,3 +127,68 @@ class TestAnalyzerManager:
 
         assert result.deep_analysis is None
         mock_claude_analyzer.analyze.assert_not_called()
+
+    def test_init_validates_min_sentiment_confidence_negative(
+        self, mock_sentiment_analyzer
+    ):
+        with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
+            AnalyzerManager(
+                sentiment_analyzer=mock_sentiment_analyzer,
+                min_sentiment_confidence=-0.5,
+            )
+
+    def test_init_validates_min_sentiment_confidence_above_one(
+        self, mock_sentiment_analyzer
+    ):
+        with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
+            AnalyzerManager(
+                sentiment_analyzer=mock_sentiment_analyzer,
+                min_sentiment_confidence=1.5,
+            )
+
+    def test_analyze_handles_sentiment_analyzer_exception(
+        self, mock_sentiment_analyzer, sample_message
+    ):
+        mock_sentiment_analyzer.analyze.side_effect = RuntimeError("Model error")
+
+        manager = AnalyzerManager(
+            sentiment_analyzer=mock_sentiment_analyzer,
+            enable_deep_analysis=False,
+        )
+        result = manager.analyze(sample_message)
+
+        # Should return neutral sentiment with zero confidence on error
+        assert result.sentiment.label == SentimentLabel.NEUTRAL
+        assert result.sentiment.confidence == 0.0
+
+    def test_analyze_batch_handles_exception_with_fallback(
+        self, mock_sentiment_analyzer, sample_message
+    ):
+        # batch fails, individual succeeds
+        mock_sentiment_analyzer.analyze_batch.side_effect = RuntimeError("Batch error")
+        mock_sentiment_analyzer.analyze.return_value = SentimentResult(
+            label=SentimentLabel.BULLISH,
+            score=0.90,
+            confidence=0.85,
+        )
+
+        manager = AnalyzerManager(
+            sentiment_analyzer=mock_sentiment_analyzer,
+            enable_deep_analysis=False,
+        )
+        messages = [sample_message, sample_message]
+        results = manager.analyze_batch(messages)
+
+        # Should fall back to individual analysis
+        assert len(results) == 2
+        assert mock_sentiment_analyzer.analyze.call_count == 2
+
+    def test_analyze_batch_empty_list(self, mock_sentiment_analyzer):
+        manager = AnalyzerManager(
+            sentiment_analyzer=mock_sentiment_analyzer,
+            enable_deep_analysis=False,
+        )
+        results = manager.analyze_batch([])
+
+        assert results == []
+        mock_sentiment_analyzer.analyze_batch.assert_not_called()
