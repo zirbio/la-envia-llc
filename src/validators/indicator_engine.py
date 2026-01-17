@@ -170,3 +170,181 @@ class IndicatorEngine:
             trend = "flat"
 
         return (histogram_value, trend)
+
+    def calculate_stochastic(
+        self,
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        k_period: int = 14,
+        d_period: int = 3,
+    ) -> tuple[float, float]:
+        """
+        Calculate Stochastic %K and %D.
+
+        The Stochastic Oscillator is a momentum indicator that compares a
+        particular closing price to a range of prices over a certain period.
+        %K is the fast stochastic, and %D is the slow stochastic (SMA of %K).
+
+        Args:
+            high: Series of high prices
+            low: Series of low prices
+            close: Series of closing prices
+            k_period: Period for %K calculation (default 14)
+            d_period: Period for %D calculation (default 3)
+
+        Returns:
+            Tuple of (stochastic_k, stochastic_d), both in range 0-100
+            Returns (50.0, 50.0) if insufficient data
+
+        Raises:
+            None - handles all edge cases gracefully
+        """
+        # Handle edge cases
+        if (
+            high is None
+            or low is None
+            or close is None
+            or len(high) == 0
+            or len(low) == 0
+            or len(close) == 0
+        ):
+            return (50.0, 50.0)
+
+        # Check for all NaN values
+        if high.isna().all() or low.isna().all() or close.isna().all():
+            return (50.0, 50.0)
+
+        # Check if series lengths match
+        if not (len(high) == len(low) == len(close)):
+            return (50.0, 50.0)
+
+        # Stochastic needs at least k_period + d_period for proper calculation
+        min_required = k_period + d_period
+        if len(close) < min_required:
+            return (50.0, 50.0)
+
+        # Calculate Stochastic using pandas_ta
+        # Returns DataFrame with columns like STOCHk_14_3_3 and STOCHd_14_3_3
+        stoch_df = ta.stoch(high, low, close, k=k_period, d=d_period)
+
+        # Handle None or empty result
+        if stoch_df is None or len(stoch_df) == 0:
+            return (50.0, 50.0)
+
+        # Get the column names (format: STOCHk_{k}_{d}_3, STOCHd_{k}_{d}_3)
+        k_col = f"STOCHk_{k_period}_{d_period}_3"
+        d_col = f"STOCHd_{k_period}_{d_period}_3"
+
+        # Check if columns exist
+        if k_col not in stoch_df.columns or d_col not in stoch_df.columns:
+            return (50.0, 50.0)
+
+        # Get the last (most recent) values
+        k_series = stoch_df[k_col]
+        d_series = stoch_df[d_col]
+
+        if k_series is None or len(k_series) == 0:
+            return (50.0, 50.0)
+        if d_series is None or len(d_series) == 0:
+            return (50.0, 50.0)
+
+        last_k = k_series.iloc[-1]
+        last_d = d_series.iloc[-1]
+
+        # Handle NaN results
+        if pd.isna(last_k) or pd.isna(last_d):
+            return (50.0, 50.0)
+
+        # Convert to float and ensure within valid range [0, 100]
+        k_value = float(last_k)
+        d_value = float(last_d)
+
+        k_value = max(0.0, min(100.0, k_value))
+        d_value = max(0.0, min(100.0, d_value))
+
+        return (k_value, d_value)
+
+    def calculate_adx(
+        self,
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        period: int = 14,
+    ) -> float:
+        """
+        Calculate ADX (Average Directional Index).
+
+        The ADX is a trend strength indicator that quantifies the strength
+        of a trend regardless of its direction. Values range from 0 to 100,
+        with values above 25 typically indicating a strong trend.
+
+        Args:
+            high: Series of high prices
+            low: Series of low prices
+            close: Series of closing prices
+            period: ADX period (default 14)
+
+        Returns:
+            ADX value (0-100), or 0.0 if insufficient data
+
+        Raises:
+            None - handles all edge cases gracefully
+        """
+        # Handle edge cases
+        if (
+            high is None
+            or low is None
+            or close is None
+            or len(high) == 0
+            or len(low) == 0
+            or len(close) == 0
+        ):
+            return 0.0
+
+        # Check for all NaN values
+        if high.isna().all() or low.isna().all() or close.isna().all():
+            return 0.0
+
+        # Check if series lengths match
+        if not (len(high) == len(low) == len(close)):
+            return 0.0
+
+        # ADX needs at least 2 * period for proper calculation
+        # (period for DI calculation, period for ADX smoothing)
+        min_required = 2 * period
+        if len(close) < min_required:
+            return 0.0
+
+        # Calculate ADX using pandas_ta
+        # Returns DataFrame with columns like ADX_{period}, DMP_{period}, DMN_{period}
+        adx_df = ta.adx(high, low, close, length=period)
+
+        # Handle None or empty result
+        if adx_df is None or len(adx_df) == 0:
+            return 0.0
+
+        # Get the ADX column name (format: ADX_{period})
+        adx_col = f"ADX_{period}"
+
+        # Check if column exists
+        if adx_col not in adx_df.columns:
+            return 0.0
+
+        # Get the last (most recent) ADX value
+        adx_series = adx_df[adx_col]
+
+        if adx_series is None or len(adx_series) == 0:
+            return 0.0
+
+        last_adx = adx_series.iloc[-1]
+
+        # Handle NaN result
+        if pd.isna(last_adx):
+            return 0.0
+
+        # Convert to float and ensure within valid range [0, 100]
+        adx_value = float(last_adx)
+        adx_value = max(0.0, min(100.0, adx_value))
+
+        return adx_value

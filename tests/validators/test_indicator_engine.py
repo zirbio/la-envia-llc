@@ -154,3 +154,76 @@ class TestIndicatorEngine:
         histogram, trend = engine.calculate_macd(nan_prices)
         assert histogram == 0.0, "Should return 0.0 histogram for NaN values"
         assert trend == "flat", "Should return 'flat' trend for NaN values"
+
+    def test_stochastic_range(self, engine: IndicatorEngine) -> None:
+        """Test that Stochastic %K and %D are always between 0 and 100."""
+        # Create test data with various price patterns
+        high = pd.Series([105, 110, 108, 112, 115, 120, 118, 125, 122, 130,
+                         128, 135, 133, 140, 138, 145, 143, 150, 148, 155])
+        low = pd.Series([95, 98, 96, 100, 103, 108, 106, 112, 110, 118,
+                        115, 123, 120, 128, 125, 133, 130, 138, 135, 143])
+        close = pd.Series([100, 105, 103, 108, 110, 115, 113, 120, 118, 125,
+                          123, 130, 128, 135, 133, 140, 138, 145, 143, 150])
+
+        stoch_k, stoch_d = engine.calculate_stochastic(
+            high, low, close, k_period=14, d_period=3
+        )
+
+        assert 0 <= stoch_k <= 100, f"Stochastic %K {stoch_k} is outside [0, 100]"
+        assert 0 <= stoch_d <= 100, f"Stochastic %D {stoch_d} is outside [0, 100]"
+
+    def test_stochastic_insufficient_data(self, engine: IndicatorEngine) -> None:
+        """Test that Stochastic returns (50.0, 50.0) for insufficient data."""
+        # Test with very short data
+        high = pd.Series([105, 110, 108])
+        low = pd.Series([95, 98, 96])
+        close = pd.Series([100, 105, 103])
+
+        stoch_k, stoch_d = engine.calculate_stochastic(high, low, close)
+        assert stoch_k == 50.0, "Should return 50.0 for %K with insufficient data"
+        assert stoch_d == 50.0, "Should return 50.0 for %D with insufficient data"
+
+        # Test with empty series
+        empty = pd.Series([], dtype=float)
+        stoch_k, stoch_d = engine.calculate_stochastic(empty, empty, empty)
+        assert stoch_k == 50.0, "Should return 50.0 for %K with empty series"
+        assert stoch_d == 50.0, "Should return 50.0 for %D with empty series"
+
+        # Test with NaN values
+        nan_series = pd.Series([np.nan, np.nan, np.nan])
+        stoch_k, stoch_d = engine.calculate_stochastic(
+            nan_series, nan_series, nan_series
+        )
+        assert stoch_k == 50.0, "Should return 50.0 for %K with NaN values"
+        assert stoch_d == 50.0, "Should return 50.0 for %D with NaN values"
+
+    def test_adx_range(self, engine: IndicatorEngine) -> None:
+        """Test that ADX is always between 0 and 100."""
+        # Create trending data (strong uptrend should have higher ADX)
+        high = pd.Series([105 + i*2 for i in range(30)])
+        low = pd.Series([95 + i*2 for i in range(30)])
+        close = pd.Series([100 + i*2 for i in range(30)])
+
+        adx = engine.calculate_adx(high, low, close, period=14)
+
+        assert 0 <= adx <= 100, f"ADX {adx} is outside [0, 100]"
+
+    def test_adx_insufficient_data(self, engine: IndicatorEngine) -> None:
+        """Test that ADX returns 0.0 for insufficient data."""
+        # Test with very short data
+        high = pd.Series([105, 110, 108])
+        low = pd.Series([95, 98, 96])
+        close = pd.Series([100, 105, 103])
+
+        adx = engine.calculate_adx(high, low, close)
+        assert adx == 0.0, "Should return 0.0 for ADX with insufficient data"
+
+        # Test with empty series
+        empty = pd.Series([], dtype=float)
+        adx = engine.calculate_adx(empty, empty, empty)
+        assert adx == 0.0, "Should return 0.0 for ADX with empty series"
+
+        # Test with NaN values
+        nan_series = pd.Series([np.nan, np.nan, np.nan])
+        adx = engine.calculate_adx(nan_series, nan_series, nan_series)
+        assert adx == 0.0, "Should return 0.0 for ADX with NaN values"
