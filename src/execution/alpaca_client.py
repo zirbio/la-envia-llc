@@ -248,6 +248,21 @@ class AlpacaClient:
 
         return result
 
+    async def get_order(self, order_id: str) -> dict:
+        """Get order details by ID.
+
+        Args:
+            order_id: The order ID to retrieve.
+
+        Returns:
+            Dictionary containing order details.
+
+        Raises:
+            APIError: If order cannot be retrieved.
+        """
+        order = self._trading_client.get_order_by_id(order_id)
+        return self._order_to_dict(order)
+
     async def cancel_order(self, order_id: str) -> bool:
         """Cancel an order by ID.
 

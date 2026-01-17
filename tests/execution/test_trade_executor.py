@@ -65,6 +65,7 @@ def mock_alpaca_client():
     client = Mock(spec=AlpacaClient)
     client.submit_order = AsyncMock()
     client.get_all_positions = AsyncMock(return_value=[])
+    client.get_order = AsyncMock()
     return client
 
 
@@ -74,6 +75,7 @@ def mock_risk_manager():
     manager = Mock(spec=RiskManager)
     manager.record_trade = Mock()
     manager.update_unrealized_pnl = Mock()
+    manager.record_close = Mock()
     return manager
 
 
@@ -258,3 +260,223 @@ async def test_execute_short_direction(
     position = tracked_positions["TSLA"]
     assert position.direction == Direction.SHORT
     assert position.entry_price == 199.50
+
+
+# Task 3: Position Sync and P&L Calculation Tests
+
+
+@pytest.mark.asyncio
+async def test_sync_detects_closed_position(
+    trade_executor, mock_alpaca_client, mock_risk_manager
+):
+    """Test that sync_positions detects when a tracked position has been closed."""
+    # Arrange - add a tracked position manually
+    tracked_position = TrackedPosition(
+        symbol="AAPL",
+        quantity=10,
+        entry_price=150.00,
+        entry_time=datetime.now(),
+        stop_loss=147.00,
+        take_profit=156.00,
+        order_id="order_123",
+        direction=Direction.LONG,
+    )
+    trade_executor._tracked_positions["AAPL"] = tracked_position
+
+    # Mock Alpaca - position is no longer there (closed)
+    mock_alpaca_client.get_all_positions.return_value = []
+
+    # Mock order details for PnL calculation
+    mock_alpaca_client.get_order = AsyncMock(return_value={
+        "id": "order_123",
+        "filled_avg_price": 156.00,  # Exited at take profit
+    })
+
+    # Act
+    closed_symbols = await trade_executor.sync_positions()
+
+    # Assert
+    assert "AAPL" in closed_symbols
+    assert "AAPL" not in trade_executor._tracked_positions
+
+    # Verify record_close was called with calculated PnL
+    # LONG: (156.00 - 150.00) * 10 = 60.00
+    mock_risk_manager.record_close.assert_called_once_with("AAPL", 60.00)
+
+
+@pytest.mark.asyncio
+async def test_sync_calculates_pnl_for_long(
+    trade_executor, mock_alpaca_client, mock_risk_manager
+):
+    """Test that sync_positions correctly calculates P&L for a closed LONG position."""
+    # Arrange
+    tracked_position = TrackedPosition(
+        symbol="NVDA",
+        quantity=5,
+        entry_price=500.00,
+        entry_time=datetime.now(),
+        stop_loss=490.00,
+        take_profit=520.00,
+        order_id="order_456",
+        direction=Direction.LONG,
+    )
+    trade_executor._tracked_positions["NVDA"] = tracked_position
+
+    # Mock Alpaca - position is closed
+    mock_alpaca_client.get_all_positions.return_value = []
+
+    # Mock order exit at $515.00
+    mock_alpaca_client.get_order = AsyncMock(return_value={
+        "id": "order_456",
+        "filled_avg_price": 515.00,
+    })
+
+    # Act
+    closed_symbols = await trade_executor.sync_positions()
+
+    # Assert
+    assert "NVDA" in closed_symbols
+
+    # LONG: (515.00 - 500.00) * 5 = 75.00
+    mock_risk_manager.record_close.assert_called_once_with("NVDA", 75.00)
+
+
+@pytest.mark.asyncio
+async def test_sync_calculates_pnl_for_short(
+    trade_executor, mock_alpaca_client, mock_risk_manager
+):
+    """Test that sync_positions correctly calculates P&L for a closed SHORT position."""
+    # Arrange
+    tracked_position = TrackedPosition(
+        symbol="TSLA",
+        quantity=8,
+        entry_price=200.00,
+        entry_time=datetime.now(),
+        stop_loss=205.00,
+        take_profit=190.00,
+        order_id="order_789",
+        direction=Direction.SHORT,
+    )
+    trade_executor._tracked_positions["TSLA"] = tracked_position
+
+    # Mock Alpaca - position is closed
+    mock_alpaca_client.get_all_positions.return_value = []
+
+    # Mock order exit at $192.00 (didn't hit take profit)
+    mock_alpaca_client.get_order = AsyncMock(return_value={
+        "id": "order_789",
+        "filled_avg_price": 192.00,
+    })
+
+    # Act
+    closed_symbols = await trade_executor.sync_positions()
+
+    # Assert
+    assert "TSLA" in closed_symbols
+
+    # SHORT: (200.00 - 192.00) * 8 = 64.00
+    mock_risk_manager.record_close.assert_called_once_with("TSLA", 64.00)
+
+
+@pytest.mark.asyncio
+async def test_sync_position_still_open(
+    trade_executor, mock_alpaca_client, mock_risk_manager
+):
+    """Test that sync_positions does not remove positions that are still open."""
+    # Arrange
+    tracked_position = TrackedPosition(
+        symbol="AAPL",
+        quantity=10,
+        entry_price=150.00,
+        entry_time=datetime.now(),
+        stop_loss=147.00,
+        take_profit=156.00,
+        order_id="order_123",
+        direction=Direction.LONG,
+    )
+    trade_executor._tracked_positions["AAPL"] = tracked_position
+
+    # Mock Alpaca - position is still open
+    mock_alpaca_client.get_all_positions.return_value = [
+        {
+            "symbol": "AAPL",
+            "qty": 10,
+            "unrealized_pl": 25.00,
+        }
+    ]
+
+    # Act
+    closed_symbols = await trade_executor.sync_positions()
+
+    # Assert
+    assert closed_symbols == []
+    assert "AAPL" in trade_executor._tracked_positions
+    mock_risk_manager.record_close.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_unrealized_pnl_sums_positions(
+    trade_executor, mock_alpaca_client, mock_risk_manager
+):
+    """Test that get_unrealized_pnl sums P&L from all Alpaca positions."""
+    # Arrange
+    mock_alpaca_client.get_all_positions.return_value = [
+        {"symbol": "AAPL", "qty": 10, "unrealized_pl": 50.00},
+        {"symbol": "NVDA", "qty": 5, "unrealized_pl": -20.00},
+        {"symbol": "TSLA", "qty": 8, "unrealized_pl": 30.00},
+    ]
+
+    # Act
+    total_pnl = await trade_executor.get_unrealized_pnl()
+
+    # Assert
+    assert total_pnl == 60.00  # 50.00 - 20.00 + 30.00
+
+
+@pytest.mark.asyncio
+async def test_get_unrealized_pnl_empty_positions(
+    trade_executor, mock_alpaca_client, mock_risk_manager
+):
+    """Test that get_unrealized_pnl returns 0.0 when there are no positions."""
+    # Arrange
+    mock_alpaca_client.get_all_positions.return_value = []
+
+    # Act
+    total_pnl = await trade_executor.get_unrealized_pnl()
+
+    # Assert
+    assert total_pnl == 0.0
+
+
+@pytest.mark.asyncio
+async def test_sync_fallback_to_take_profit_on_order_error(
+    trade_executor, mock_alpaca_client, mock_risk_manager
+):
+    """Test that sync_positions falls back to take_profit when order lookup fails."""
+    # Arrange
+    tracked_position = TrackedPosition(
+        symbol="MSFT",
+        quantity=12,
+        entry_price=300.00,
+        entry_time=datetime.now(),
+        stop_loss=295.00,
+        take_profit=310.00,
+        order_id="order_999",
+        direction=Direction.LONG,
+    )
+    trade_executor._tracked_positions["MSFT"] = tracked_position
+
+    # Mock Alpaca - position is closed
+    mock_alpaca_client.get_all_positions.return_value = []
+
+    # Mock order lookup to raise an exception (e.g., order not found)
+    mock_alpaca_client.get_order = AsyncMock(side_effect=Exception("Order not found"))
+
+    # Act
+    closed_symbols = await trade_executor.sync_positions()
+
+    # Assert
+    assert "MSFT" in closed_symbols
+
+    # Should use take_profit as fallback: (310.00 - 300.00) * 12 = 120.00
+    mock_risk_manager.record_close.assert_called_once_with("MSFT", 120.00)

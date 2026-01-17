@@ -151,20 +151,65 @@ class TradeExecutor:
         return "buy" if direction == Direction.LONG else "sell"
 
     async def sync_positions(self) -> list[str]:
-        """Placeholder - returns empty list. Implemented in Task 3.
+        """Compare tracked positions with Alpaca, detect closes.
+
+        Returns list of symbols that were closed.
+        For each closed position:
+        1. Fetch current positions from Alpaca
+        2. Find tracked positions no longer in Alpaca
+        3. Calculate realized P&L
+        4. Call risk_manager.record_close(symbol, pnl)
+        5. Remove from _tracked_positions
 
         Returns:
-            Empty list (placeholder).
+            List of symbols that were closed.
         """
-        return []
+        alpaca_positions = await self._alpaca.get_all_positions()
+        alpaca_symbols = {p["symbol"] for p in alpaca_positions}
+
+        closed_symbols = []
+        for symbol, tracked in list(self._tracked_positions.items()):
+            if symbol not in alpaca_symbols:
+                closed_symbols.append(symbol)
+                pnl = await self._calculate_closed_pnl(tracked)
+                self._risk_manager.record_close(symbol, pnl)
+                del self._tracked_positions[symbol]
+
+        return closed_symbols
+
+    async def _calculate_closed_pnl(self, position: TrackedPosition) -> float:
+        """Calculate realized P&L for closed position.
+
+        For LONG: (exit_price - entry_price) * quantity
+        For SHORT: (entry_price - exit_price) * quantity
+
+        Try to get exit price from order history, fallback to take_profit.
+
+        Args:
+            position: The tracked position that was closed.
+
+        Returns:
+            Realized profit/loss as a float.
+        """
+        try:
+            order = await self._alpaca.get_order(position.order_id)
+            exit_price = order.get("filled_avg_price", position.take_profit)
+        except Exception:
+            exit_price = position.take_profit
+
+        if position.direction == Direction.LONG:
+            return (exit_price - position.entry_price) * position.quantity
+        else:
+            return (position.entry_price - exit_price) * position.quantity
 
     async def get_unrealized_pnl(self) -> float:
-        """Placeholder - returns 0.0. Implemented in Task 3.
+        """Sum unrealized P&L from all Alpaca positions.
 
         Returns:
-            0.0 (placeholder).
+            Total unrealized profit/loss across all positions.
         """
-        return 0.0
+        positions = await self._alpaca.get_all_positions()
+        return sum(float(p.get("unrealized_pl", 0)) for p in positions)
 
     def get_tracked_positions(self) -> dict[str, TrackedPosition]:
         """Return copy of tracked positions.
