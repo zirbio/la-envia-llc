@@ -123,6 +123,54 @@ class ValidatorsSettings(BaseModel):
     technical: TechnicalValidatorSettings = Field(default_factory=TechnicalValidatorSettings)
 
 
+class ScoringSettings(BaseModel):
+    """Settings for scoring system."""
+
+    enabled: bool = True
+
+    # Score thresholds
+    tier_strong_threshold: int = Field(default=80, ge=0, le=100)
+    tier_moderate_threshold: int = Field(default=60, ge=0, le=100)
+    tier_weak_threshold: int = Field(default=40, ge=0, le=100)
+
+    # Position sizing
+    position_size_strong: float = Field(default=100.0, ge=0, le=100)
+    position_size_moderate: float = Field(default=50.0, ge=0, le=100)
+    position_size_weak: float = Field(default=25.0, ge=0, le=100)
+
+    # Trade parameters
+    default_stop_loss_percent: float = Field(default=2.0, ge=0.1, le=10.0)
+    default_risk_reward_ratio: float = Field(default=2.0, ge=1.0, le=5.0)
+
+    # Dynamic weights
+    base_sentiment_weight: float = Field(default=0.5, ge=0, le=1)
+    base_technical_weight: float = Field(default=0.5, ge=0, le=1)
+    strong_trend_adx: float = Field(default=30.0, ge=20, le=50)
+    weak_trend_adx: float = Field(default=20.0, ge=10, le=30)
+
+    # Confluence
+    confluence_window_minutes: int = Field(default=15, ge=1, le=60)
+    confluence_bonus_2_signals: float = Field(default=0.10, ge=0, le=0.5)
+    confluence_bonus_3_signals: float = Field(default=0.20, ge=0, le=0.5)
+
+    # Time factors
+    premarket_factor: float = Field(default=0.9, ge=0.5, le=1.0)
+    afterhours_factor: float = Field(default=0.8, ge=0.5, le=1.0)
+    earnings_proximity_days: int = Field(default=3, ge=1, le=14)
+    earnings_factor: float = Field(default=0.7, ge=0.5, le=1.0)
+
+    # Source credibility
+    credibility_tier1_multiplier: float = Field(default=1.2, ge=1.0, le=1.5)
+    credibility_tier2_multiplier: float = Field(default=1.0, ge=0.8, le=1.2)
+    credibility_tier3_multiplier: float = Field(default=0.8, ge=0.5, le=1.0)
+    tier1_sources: list[str] = Field(
+        default_factory=lambda: [
+            "unusual_whales",
+            "optionsflow",
+        ]
+    )
+
+
 class AlpacaConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ALPACA_")
 
@@ -147,6 +195,7 @@ class Settings(BaseModel):
     risk: RiskConfig = Field(default_factory=RiskConfig)
     analyzers: AnalyzersSettings = Field(default_factory=AnalyzersSettings)
     validators: ValidatorsSettings = Field(default_factory=ValidatorsSettings)
+    scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 

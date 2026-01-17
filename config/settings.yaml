@@ -72,3 +72,46 @@ validators:
     veto_mode: true
     lookback_bars: 50
     timeframe: "5Min"
+
+# CAPA 4: Scoring System
+scoring:
+  enabled: true
+
+  # Score thresholds
+  tier_strong_threshold: 80
+  tier_moderate_threshold: 60
+  tier_weak_threshold: 40
+
+  # Position sizing (percentage)
+  position_size_strong: 100.0
+  position_size_moderate: 50.0
+  position_size_weak: 25.0
+
+  # Trade parameters
+  default_stop_loss_percent: 2.0
+  default_risk_reward_ratio: 2.0
+
+  # Dynamic weights
+  base_sentiment_weight: 0.5
+  base_technical_weight: 0.5
+  strong_trend_adx: 30.0
+  weak_trend_adx: 20.0
+
+  # Confluence settings
+  confluence_window_minutes: 15
+  confluence_bonus_2_signals: 0.10
+  confluence_bonus_3_signals: 0.20
+
+  # Time factors
+  premarket_factor: 0.9
+  afterhours_factor: 0.8
+  earnings_proximity_days: 3
+  earnings_factor: 0.7
+
+  # Source credibility multipliers
+  credibility_tier1_multiplier: 1.2
+  credibility_tier2_multiplier: 1.0
+  credibility_tier3_multiplier: 0.8
+  tier1_sources:
+    - unusual_whales
+    - optionsflow
