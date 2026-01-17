@@ -111,3 +111,87 @@ class TestMarketGateTradingHours:
         result = gate._check_trading_hours(test_time)
 
         assert result.passed is True
+
+
+class TestMarketGateVolume:
+    """Tests for volume check."""
+
+    @pytest.fixture
+    def settings(self) -> MarketGateSettings:
+        """Default settings for tests."""
+        return MarketGateSettings(
+            spy_min_volume=500_000,
+            qqq_min_volume=300_000,
+        )
+
+    @pytest.fixture
+    def mock_vix_fetcher(self) -> MagicMock:
+        """Mock VIX fetcher."""
+        fetcher = MagicMock()
+        fetcher.fetch_vix.return_value = 18.0
+        return fetcher
+
+    @pytest.mark.asyncio
+    async def test_volume_pass_when_above_minimum(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Volume check passes when SPY and QQQ above minimum."""
+        mock_alpaca = AsyncMock()
+        mock_alpaca.get_latest_bar.side_effect = [
+            {"symbol": "SPY", "volume": 600_000},
+            {"symbol": "QQQ", "volume": 400_000},
+        ]
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_volume()
+
+        assert result.passed is True
+        assert result.name == "volume"
+
+    @pytest.mark.asyncio
+    async def test_volume_fail_when_spy_low(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Volume check fails when SPY below minimum."""
+        mock_alpaca = AsyncMock()
+        mock_alpaca.get_latest_bar.side_effect = [
+            {"symbol": "SPY", "volume": 100_000},
+            {"symbol": "QQQ", "volume": 400_000},
+        ]
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_volume()
+
+        assert result.passed is False
+        assert "SPY" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_volume_fail_when_qqq_low(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Volume check fails when QQQ below minimum."""
+        mock_alpaca = AsyncMock()
+        mock_alpaca.get_latest_bar.side_effect = [
+            {"symbol": "SPY", "volume": 600_000},
+            {"symbol": "QQQ", "volume": 100_000},
+        ]
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_volume()
+
+        assert result.passed is False
+        assert "QQQ" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_volume_handles_api_error(
+        self, settings: MarketGateSettings, mock_vix_fetcher: MagicMock
+    ) -> None:
+        """Volume check fails gracefully on API error."""
+        mock_alpaca = AsyncMock()
+        mock_alpaca.get_latest_bar.side_effect = Exception("API error")
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result = await gate._check_volume()
+
+        assert result.passed is False
+        assert "error" in result.reason.lower()

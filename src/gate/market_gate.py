@@ -106,3 +106,60 @@ class MarketGate:
             reason=None,
             data=data,
         )
+
+    async def _check_volume(self) -> GateCheckResult:
+        """Check if SPY and QQQ have sufficient volume.
+
+        Uses Alpaca to get latest 1-minute bar volume.
+
+        Returns:
+            GateCheckResult indicating if volume check passed.
+        """
+        data: dict[str, Any] = {
+            "spy_min_required": self._settings.spy_min_volume,
+            "qqq_min_required": self._settings.qqq_min_volume,
+        }
+
+        try:
+            spy_bar = await self._alpaca.get_latest_bar("SPY")
+            qqq_bar = await self._alpaca.get_latest_bar("QQQ")
+
+            spy_volume = spy_bar.get("volume", 0)
+            qqq_volume = qqq_bar.get("volume", 0)
+
+            data["spy_volume"] = spy_volume
+            data["qqq_volume"] = qqq_volume
+
+            # Check SPY volume
+            if spy_volume < self._settings.spy_min_volume:
+                return GateCheckResult(
+                    name="volume",
+                    passed=False,
+                    reason=f"SPY volume ({spy_volume:,}) below minimum ({self._settings.spy_min_volume:,})",
+                    data=data,
+                )
+
+            # Check QQQ volume
+            if qqq_volume < self._settings.qqq_min_volume:
+                return GateCheckResult(
+                    name="volume",
+                    passed=False,
+                    reason=f"QQQ volume ({qqq_volume:,}) below minimum ({self._settings.qqq_min_volume:,})",
+                    data=data,
+                )
+
+            return GateCheckResult(
+                name="volume",
+                passed=True,
+                reason=None,
+                data=data,
+            )
+
+        except Exception as e:
+            data["error"] = str(e)
+            return GateCheckResult(
+                name="volume",
+                passed=False,
+                reason=f"Error fetching volume data: {e}",
+                data=data,
+            )
