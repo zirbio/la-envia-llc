@@ -10,6 +10,8 @@ from src.validators.models import (
     ValidationStatus,
 )
 from src.validators.options_validator import OptionsValidator
+from src.validators.technical_validator import TechnicalValidator
+from src.validators.veto_logic import VetoLogic
 
 __all__ = [
     "ValidationStatus",
@@ -19,4 +21,6 @@ __all__ = [
     "ValidatedSignal",
     "IndicatorEngine",
     "OptionsValidator",
+    "VetoLogic",
+    "TechnicalValidator",
 ]
