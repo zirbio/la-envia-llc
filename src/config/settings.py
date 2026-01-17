@@ -65,6 +65,37 @@ class RiskConfig(BaseModel):
     circuit_breakers: CircuitBreakersConfig = Field(default_factory=CircuitBreakersConfig)
 
 
+class SentimentAnalyzerSettings(BaseModel):
+    """Settings for sentiment analyzer."""
+
+    model: str = "StephanAkkerman/FinTwitBERT-sentiment"
+    batch_size: int = 32
+    min_confidence: float = 0.7
+
+
+class ClaudeAnalyzerSettings(BaseModel):
+    """Settings for Claude analyzer."""
+
+    enabled: bool = True
+    model: str = "claude-sonnet-4-20250514"
+    max_tokens: int = 1000
+    rate_limit_per_minute: int = 20
+    use_for: list[str] = Field(
+        default_factory=lambda: [
+            "catalyst_classification",
+            "risk_assessment",
+            "context_analysis",
+        ]
+    )
+
+
+class AnalyzersSettings(BaseModel):
+    """Settings for all analyzers."""
+
+    sentiment: SentimentAnalyzerSettings = Field(default_factory=SentimentAnalyzerSettings)
+    claude: ClaudeAnalyzerSettings = Field(default_factory=ClaudeAnalyzerSettings)
+
+
 class AlpacaConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ALPACA_")
 
@@ -87,6 +118,7 @@ class Settings(BaseModel):
     system: SystemConfig = Field(default_factory=SystemConfig)
     collectors: CollectorsConfig = Field(default_factory=CollectorsConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    analyzers: AnalyzersSettings = Field(default_factory=AnalyzersSettings)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 

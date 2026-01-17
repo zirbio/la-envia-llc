@@ -35,3 +35,20 @@ risk:
     weekly:
       max_loss_percent: 6.0
       force_paper_mode: true
+
+# CAPA 2: Análisis
+analyzers:
+  sentiment:
+    model: "StephanAkkerman/FinTwitBERT-sentiment"
+    batch_size: 32
+    min_confidence: 0.7
+
+  claude:
+    enabled: true
+    model: "claude-sonnet-4-20250514"
+    max_tokens: 1000
+    rate_limit_per_minute: 20
+    use_for:
+      - catalyst_classification
+      - risk_assessment
+      - context_analysis
