@@ -195,3 +195,77 @@ class TestMarketGateVolume:
 
         assert result.passed is False
         assert "error" in result.reason.lower()
+
+
+class TestMarketGateVix:
+    """Tests for VIX check."""
+
+    @pytest.fixture
+    def settings(self) -> MarketGateSettings:
+        """Default settings for tests."""
+        return MarketGateSettings(
+            vix_max=30.0,
+            vix_elevated=25.0,
+            elevated_size_factor=0.5,
+        )
+
+    @pytest.fixture
+    def mock_alpaca(self) -> MagicMock:
+        """Mock Alpaca client."""
+        return MagicMock()
+
+    def test_vix_normal_returns_factor_one(
+        self, settings: MarketGateSettings, mock_alpaca: MagicMock
+    ) -> None:
+        """VIX below elevated threshold returns factor 1.0."""
+        mock_vix_fetcher = MagicMock()
+        mock_vix_fetcher.fetch_vix.return_value = 18.0
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result, factor = gate._check_vix()
+
+        assert result.passed is True
+        assert factor == 1.0
+        assert result.data["vix_value"] == 18.0
+
+    def test_vix_elevated_returns_reduced_factor(
+        self, settings: MarketGateSettings, mock_alpaca: MagicMock
+    ) -> None:
+        """VIX between elevated and max returns reduced factor."""
+        mock_vix_fetcher = MagicMock()
+        mock_vix_fetcher.fetch_vix.return_value = 27.0
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result, factor = gate._check_vix()
+
+        assert result.passed is True
+        assert factor == 0.5
+        assert "elevated" in result.data.get("status", "").lower()
+
+    def test_vix_blocked_when_above_max(
+        self, settings: MarketGateSettings, mock_alpaca: MagicMock
+    ) -> None:
+        """VIX above max threshold blocks trading."""
+        mock_vix_fetcher = MagicMock()
+        mock_vix_fetcher.fetch_vix.return_value = 35.0
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result, factor = gate._check_vix()
+
+        assert result.passed is False
+        assert factor == 0.0
+        assert "above maximum" in result.reason.lower()
+
+    def test_vix_handles_fetch_error(
+        self, settings: MarketGateSettings, mock_alpaca: MagicMock
+    ) -> None:
+        """VIX check fails gracefully when fetch returns None."""
+        mock_vix_fetcher = MagicMock()
+        mock_vix_fetcher.fetch_vix.return_value = None
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        result, factor = gate._check_vix()
+
+        assert result.passed is False
+        assert factor == 0.0
+        assert "unavailable" in result.reason.lower()

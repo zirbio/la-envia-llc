@@ -163,3 +163,71 @@ class MarketGate:
                 reason=f"Error fetching volume data: {e}",
                 data=data,
             )
+
+    def _check_vix(self) -> tuple[GateCheckResult, float]:
+        """Check VIX level and determine position size factor.
+
+        Returns:
+            Tuple of (GateCheckResult, position_size_factor).
+            Factor is 1.0 for normal, 0.5 for elevated, 0.0 for blocked.
+        """
+        vix_value = self._vix_fetcher.fetch_vix()
+
+        data: dict[str, Any] = {
+            "vix_max": self._settings.vix_max,
+            "vix_elevated": self._settings.vix_elevated,
+        }
+
+        # Handle fetch failure
+        if vix_value is None:
+            data["vix_value"] = None
+            data["status"] = "unavailable"
+            return (
+                GateCheckResult(
+                    name="vix",
+                    passed=False,
+                    reason="VIX data unavailable",
+                    data=data,
+                ),
+                0.0,
+            )
+
+        data["vix_value"] = vix_value
+
+        # Check if VIX above maximum (blocked)
+        if vix_value > self._settings.vix_max:
+            data["status"] = "blocked"
+            return (
+                GateCheckResult(
+                    name="vix",
+                    passed=False,
+                    reason=f"VIX ({vix_value:.1f}) above maximum ({self._settings.vix_max})",
+                    data=data,
+                ),
+                0.0,
+            )
+
+        # Check if VIX elevated (reduced size)
+        if vix_value >= self._settings.vix_elevated:
+            data["status"] = "elevated"
+            return (
+                GateCheckResult(
+                    name="vix",
+                    passed=True,
+                    reason=None,
+                    data=data,
+                ),
+                self._settings.elevated_size_factor,
+            )
+
+        # Normal VIX
+        data["status"] = "normal"
+        return (
+            GateCheckResult(
+                name="vix",
+                passed=True,
+                reason=None,
+                data=data,
+            ),
+            1.0,
+        )
