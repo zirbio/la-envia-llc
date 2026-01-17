@@ -166,3 +166,117 @@ class TestRiskManagerCheckTrade:
         assert result.adjusted_value == 0.0
         assert result.rejection_reason == "Cannot execute trade with NEUTRAL direction"
         assert len(result.warnings) == 0
+
+
+class TestRiskManagerRecording:
+    """Tests for RiskManager recording and state management methods."""
+
+    @pytest.fixture
+    def manager(self):
+        """Create a RiskManager instance for testing."""
+        return RiskManager(
+            max_position_value=1000.0,
+            max_daily_loss=500.0,
+            unrealized_warning_threshold=300.0,
+        )
+
+    def test_record_trade_increments_count(self, manager):
+        """Test that record_trade increments the trades_today counter."""
+        assert manager._daily_state.trades_today == 0
+
+        manager.record_trade(symbol="AAPL", quantity=10, price=150.0)
+        assert manager._daily_state.trades_today == 1
+
+        manager.record_trade(symbol="MSFT", quantity=5, price=300.0)
+        assert manager._daily_state.trades_today == 2
+
+        manager.record_trade(symbol="AAPL", quantity=3, price=152.0)
+        assert manager._daily_state.trades_today == 3
+
+    def test_record_close_updates_realized_pnl(self, manager):
+        """Test that record_close updates realized PnL correctly."""
+        assert manager._daily_state.realized_pnl == 0.0
+        assert manager._daily_state.is_blocked is False
+
+        # Record a profit
+        manager.record_close(symbol="AAPL", pnl=100.0)
+        assert manager._daily_state.realized_pnl == 100.0
+        assert manager._daily_state.is_blocked is False
+
+        # Record a small loss
+        manager.record_close(symbol="MSFT", pnl=-50.0)
+        assert manager._daily_state.realized_pnl == 50.0
+        assert manager._daily_state.is_blocked is False
+
+    def test_record_close_blocks_when_limit_hit(self, manager):
+        """Test that record_close blocks trading when daily loss limit is hit."""
+        assert manager._daily_state.is_blocked is False
+
+        # First close with loss of 300 (not yet at limit of 500)
+        manager.record_close(symbol="AAPL", pnl=-300.0)
+        assert manager._daily_state.realized_pnl == -300.0
+        assert manager._daily_state.is_blocked is False
+
+        # Second close with loss of 250, total = -550 (exceeds limit of 500)
+        manager.record_close(symbol="MSFT", pnl=-250.0)
+        assert manager._daily_state.realized_pnl == -550.0
+        assert manager._daily_state.is_blocked is True
+
+    def test_update_unrealized_pnl(self, manager):
+        """Test that update_unrealized_pnl sets the unrealized PnL value."""
+        assert manager._daily_state.unrealized_pnl == 0.0
+
+        manager.update_unrealized_pnl(total_unrealized=150.0)
+        assert manager._daily_state.unrealized_pnl == 150.0
+
+        manager.update_unrealized_pnl(total_unrealized=-75.0)
+        assert manager._daily_state.unrealized_pnl == -75.0
+
+        manager.update_unrealized_pnl(total_unrealized=0.0)
+        assert manager._daily_state.unrealized_pnl == 0.0
+
+    def test_reset_daily_state(self, manager):
+        """Test that reset_daily_state clears all accumulated state."""
+        # Accumulate some state
+        manager.record_trade(symbol="AAPL", quantity=10, price=150.0)
+        manager.record_trade(symbol="MSFT", quantity=5, price=300.0)
+        manager.record_close(symbol="AAPL", pnl=-200.0)
+        manager.update_unrealized_pnl(total_unrealized=-100.0)
+
+        # Verify state is accumulated
+        assert manager._daily_state.trades_today == 2
+        assert manager._daily_state.realized_pnl == -200.0
+        assert manager._daily_state.unrealized_pnl == -100.0
+
+        # Reset the state
+        manager.reset_daily_state()
+
+        # Verify everything is cleared
+        assert manager._daily_state.date == date.today()
+        assert manager._daily_state.realized_pnl == 0.0
+        assert manager._daily_state.unrealized_pnl == 0.0
+        assert manager._daily_state.trades_today == 0
+        assert manager._daily_state.is_blocked is False
+
+    def test_get_daily_state(self, manager):
+        """Test that get_daily_state returns the current daily risk state."""
+        # Get initial state
+        state = manager.get_daily_state()
+        assert isinstance(state, DailyRiskState)
+        assert state.date == date.today()
+        assert state.realized_pnl == 0.0
+        assert state.unrealized_pnl == 0.0
+        assert state.trades_today == 0
+        assert state.is_blocked is False
+
+        # Accumulate some state
+        manager.record_trade(symbol="AAPL", quantity=10, price=150.0)
+        manager.record_close(symbol="AAPL", pnl=75.0)
+        manager.update_unrealized_pnl(total_unrealized=-25.0)
+
+        # Get updated state
+        state = manager.get_daily_state()
+        assert state.trades_today == 1
+        assert state.realized_pnl == 75.0
+        assert state.unrealized_pnl == -25.0
+        assert state.is_blocked is False

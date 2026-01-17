@@ -120,3 +120,62 @@ class RiskManager:
             rejection_reason=None,
             warnings=warnings,
         )
+
+    def record_trade(self, symbol: str, quantity: int, price: float) -> None:
+        """Record an executed trade.
+
+        Increments the daily trade counter by 1.
+
+        Args:
+            symbol: The trading symbol.
+            quantity: Number of shares/contracts executed.
+            price: Execution price.
+        """
+        self._daily_state.trades_today += 1
+
+    def record_close(self, symbol: str, pnl: float) -> None:
+        """Record closed position P&L.
+
+        Adds pnl to realized_pnl. If the total realized PnL reaches or exceeds
+        the negative max_daily_loss threshold, sets is_blocked=True to prevent
+        further trading.
+
+        Args:
+            symbol: The trading symbol.
+            pnl: The realized profit/loss from closing the position.
+        """
+        self._daily_state.realized_pnl += pnl
+        if self._daily_state.realized_pnl <= -self.max_daily_loss:
+            self._daily_state.is_blocked = True
+
+    def update_unrealized_pnl(self, total_unrealized: float) -> None:
+        """Update current unrealized P&L.
+
+        Sets the unrealized_pnl value to reflect current open positions.
+
+        Args:
+            total_unrealized: The total unrealized profit/loss across all positions.
+        """
+        self._daily_state.unrealized_pnl = total_unrealized
+
+    def reset_daily_state(self) -> None:
+        """Reset for new trading day.
+
+        Creates a new DailyRiskState with today's date and all values reset to zero.
+        This should be called at the start of each trading day.
+        """
+        self._daily_state = DailyRiskState(
+            date=date.today(),
+            realized_pnl=0.0,
+            unrealized_pnl=0.0,
+            trades_today=0,
+            is_blocked=False,
+        )
+
+    def get_daily_state(self) -> DailyRiskState:
+        """Get current daily risk state.
+
+        Returns:
+            The current DailyRiskState instance.
+        """
+        return self._daily_state
