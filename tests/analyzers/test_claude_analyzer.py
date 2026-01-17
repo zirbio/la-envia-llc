@@ -57,6 +57,20 @@ class TestClaudeAnalyzer:
             assert result.catalyst_type == CatalystType.UNKNOWN
             assert result.risk_level == RiskLevel.HIGH
 
+    def test_analyze_handles_malformed_json(self, sample_message):
+        with patch("src.analyzers.claude_analyzer.Anthropic") as mock_anthropic:
+            mock_response = MagicMock()
+            mock_response.content = [MagicMock(text="This is not valid JSON {broken")]
+            mock_anthropic.return_value.messages.create.return_value = mock_response
+
+            analyzer = ClaudeAnalyzer(api_key="test-key")
+            result = analyzer.analyze(sample_message)
+
+            assert result.catalyst_type == CatalystType.UNKNOWN
+            assert result.risk_level == RiskLevel.HIGH
+            assert "analysis_failed" in result.risk_factors
+            assert result.recommendation == "skip"
+
     def test_rate_limiting(self, sample_message):
         with patch("src.analyzers.claude_analyzer.Anthropic") as mock_anthropic:
             mock_response = MagicMock()

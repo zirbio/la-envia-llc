@@ -1,16 +1,22 @@
 # src/analyzers/claude_analyzer.py
 import json
+import logging
 import time
-from typing import Optional
 
 from anthropic import Anthropic
 
 from src.analyzers.claude_result import ClaudeAnalysisResult, CatalystType, RiskLevel
 from src.models.social_message import SocialMessage
 
+logger = logging.getLogger(__name__)
+
 
 class ClaudeAnalyzer:
-    """Deep analysis using Claude API."""
+    """Deep analysis using Claude API.
+
+    Note: Rate limiting via _enforce_rate_limit() is not thread-safe.
+    This is acceptable for the async single-threaded design of this system.
+    """
 
     DEFAULT_MODEL = "claude-sonnet-4-20250514"
     DEFAULT_MAX_TOKENS = 1000
@@ -45,7 +51,7 @@ Respond ONLY with valid JSON, no other text.'''
         self.model = model or self.DEFAULT_MODEL
         self.max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
         self.rate_limit_per_minute = rate_limit_per_minute
-        self._last_call_time: Optional[float] = None
+        self._last_call_time: float | None = None
 
     def analyze(self, message: SocialMessage) -> ClaudeAnalysisResult:
         """Analyze a social message for catalyst and risk assessment."""
@@ -79,7 +85,8 @@ Respond ONLY with valid JSON, no other text.'''
                 reasoning=result_data.get("reasoning"),
             )
 
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Claude analysis failed: {e}")
             return ClaudeAnalysisResult(
                 catalyst_type=CatalystType.UNKNOWN,
                 catalyst_confidence=0.0,
