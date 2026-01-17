@@ -9,6 +9,7 @@ from src.scoring.models import (
 from src.scoring.source_credibility import SourceCredibilityManager
 from src.scoring.time_factors import TimeFactorCalculator
 from src.scoring.confluence_detector import ConfluenceDetector
+from src.scoring.dynamic_weight_calculator import DynamicWeightCalculator
 
 __all__ = [
     "Direction",
@@ -18,4 +19,5 @@ __all__ = [
     "SourceCredibilityManager",
     "TimeFactorCalculator",
     "ConfluenceDetector",
+    "DynamicWeightCalculator",
 ]
