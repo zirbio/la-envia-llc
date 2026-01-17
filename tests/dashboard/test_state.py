@@ -87,3 +87,27 @@ class TestDashboardState:
 
         state.alerts[0].read = True
         assert state.unread_count == 1
+
+    def test_mark_all_read(self) -> None:
+        """Should mark all alerts as read."""
+        state = DashboardState.get_instance()
+
+        state.add_alert(
+            alert_type=AlertType.TRADE_EXECUTED,
+            level=AlertLevel.INFO,
+            title="Alert 1",
+            message="Message 1",
+        )
+        state.add_alert(
+            alert_type=AlertType.CIRCUIT_BREAKER,
+            level=AlertLevel.WARNING,
+            title="Alert 2",
+            message="Message 2",
+        )
+
+        assert state.unread_count == 2
+
+        state.mark_all_read()
+
+        assert state.unread_count == 0
+        assert all(alert.read for alert in state.alerts)
