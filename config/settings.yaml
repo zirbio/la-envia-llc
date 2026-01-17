@@ -154,3 +154,23 @@ orchestrator:
   max_buffer_size: 1000
   continue_without_validator: true
   gate_fail_safe_closed: true
+
+# Phase 9: Notifications
+notifications:
+  enabled: true
+  # telegram_token and chat_id from environment variables:
+  # TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+  alert_types:
+    - new_signal
+    - entry_executed
+    - exit_executed
+    - circuit_breaker
+    - daily_summary
+  pre_market_checklist_enabled: true
+  pre_market_checklist_time: "09:00"
+  checklist_items:
+    - "Economic calendar reviewed"
+    - "Overnight news checked"
+    - "Watchlist prepared"
+    - "Mental state: focused"
+    - "Risk parameters confirmed"

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from gate.market_gate import MarketGateSettings
+from notifications.settings import NotificationSettings
 from orchestrator.settings import OrchestratorSettings
 
 
@@ -220,6 +221,7 @@ class Settings(BaseModel):
     execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     market_gate: MarketGateSettings = Field(default_factory=MarketGateSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
+    notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 
