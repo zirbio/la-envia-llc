@@ -3,13 +3,17 @@
 
 from typing import Optional
 
+import pandas as pd
+
 # Import at module level for mocking in tests
 try:
-    from alpaca.trading.client import TradingClient
-    from alpaca.data.historical import StockHistoricalDataClient
-    from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest
-    from alpaca.trading.enums import OrderSide, TimeInForce
     from alpaca.common.exceptions import APIError
+    from alpaca.data.historical import StockHistoricalDataClient
+    from alpaca.data.requests import StockBarsRequest
+    from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+    from alpaca.trading.client import TradingClient
+    from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
 except ImportError:
     TradingClient = None
     StockHistoricalDataClient = None
@@ -18,6 +22,9 @@ except ImportError:
     OrderSide = None
     TimeInForce = None
     APIError = Exception
+    StockBarsRequest = None
+    TimeFrame = None
+    TimeFrameUnit = None
 
 
 class AlpacaClient:
@@ -230,7 +237,9 @@ class AlpacaClient:
             "side": str(order.side),
             "type": str(order.type),
             "filled_qty": int(order.filled_qty) if order.filled_qty else 0,
-            "filled_avg_price": float(order.filled_avg_price) if order.filled_avg_price else None,
+            "filled_avg_price": (
+                float(order.filled_avg_price) if order.filled_avg_price else None
+            ),
         }
 
         # Add limit price if present
@@ -253,3 +262,51 @@ class AlpacaClient:
             return True
         except APIError:
             return False
+
+    def get_bars(
+        self,
+        symbol: str,
+        limit: int = 50,
+        timeframe: str = "5Min",
+    ) -> pd.DataFrame:
+        """Get historical bars for a symbol.
+
+        Args:
+            symbol: Stock symbol (e.g., "NVDA")
+            limit: Number of bars to fetch
+            timeframe: Bar timeframe ("1Min", "5Min", "15Min", "1Hour", "1Day")
+
+        Returns:
+            DataFrame with OHLCV data (columns: open, high, low, close, volume)
+        """
+        # Map timeframe string to TimeFrame object
+        timeframe_map = {
+            "1Min": TimeFrame(1, TimeFrameUnit.Minute),
+            "5Min": TimeFrame(5, TimeFrameUnit.Minute),
+            "15Min": TimeFrame(15, TimeFrameUnit.Minute),
+            "1Hour": TimeFrame(1, TimeFrameUnit.Hour),
+            "1Day": TimeFrame(1, TimeFrameUnit.Day),
+        }
+
+        # Get TimeFrame object or default to 5Min
+        tf = timeframe_map.get(timeframe, TimeFrame(5, TimeFrameUnit.Minute))
+
+        # Create StockBarsRequest
+        request = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=tf,
+            limit=limit,
+        )
+
+        # Get bars from data client
+        bars_df = self._data_client.get_stock_bars(request)
+
+        # Handle empty DataFrame
+        if bars_df.empty:
+            return pd.DataFrame()
+
+        # Handle MultiIndex DataFrame - drop symbol level if present
+        if isinstance(bars_df.index, pd.MultiIndex):
+            bars_df = bars_df.droplevel("symbol")
+
+        return bars_df
