@@ -1,16 +1,13 @@
 # src/scoring/__init__.py
-"""Scoring system for trade recommendations."""
-from src.scoring.models import (
-    Direction,
-    ScoreTier,
-    ScoreComponents,
-    TradeRecommendation,
-)
-from src.scoring.source_credibility import SourceCredibilityManager
-from src.scoring.time_factors import TimeFactorCalculator
-from src.scoring.confluence_detector import ConfluenceDetector
-from src.scoring.dynamic_weight_calculator import DynamicWeightCalculator
-from src.scoring.recommendation_builder import RecommendationBuilder
+"""Scoring module for CAPA 4."""
+
+from .models import Direction, ScoreTier, ScoreComponents, TradeRecommendation
+from .source_credibility import SourceCredibilityManager
+from .time_factors import TimeFactorCalculator
+from .confluence_detector import ConfluenceDetector
+from .dynamic_weight_calculator import DynamicWeightCalculator
+from .recommendation_builder import RecommendationBuilder
+from .signal_scorer import SignalScorer
 
 __all__ = [
     "Direction",
@@ -22,4 +19,5 @@ __all__ = [
     "ConfluenceDetector",
     "DynamicWeightCalculator",
     "RecommendationBuilder",
+    "SignalScorer",
 ]
