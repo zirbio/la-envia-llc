@@ -6,10 +6,12 @@ from src.scoring.models import (
     ScoreComponents,
     TradeRecommendation,
 )
+from src.scoring.source_credibility import SourceCredibilityManager
 
 __all__ = [
     "Direction",
     "ScoreTier",
     "ScoreComponents",
     "TradeRecommendation",
+    "SourceCredibilityManager",
 ]
