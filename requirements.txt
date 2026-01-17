@@ -1,5 +1,10 @@
 # Core
 alpaca-py>=0.21.0
+
+# ML/AI (Phase 2 - Sentiment Analysis)
+transformers>=4.36.0
+torch>=2.0.0
+anthropic>=0.40.0
 asyncpraw>=7.7.0
 twscrape>=0.12.0
 pytwits>=0.0.5
