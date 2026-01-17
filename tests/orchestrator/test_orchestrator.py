@@ -9,9 +9,13 @@ import pytest
 from src.analyzers.analyzed_message import AnalyzedMessage
 from src.analyzers.sentiment_result import SentimentLabel, SentimentResult
 from src.models.social_message import SocialMessage, SourceType
+from gate.models import GateCheckResult, GateStatus
 from orchestrator.models import OrchestratorState, ProcessResult
 from orchestrator.settings import OrchestratorSettings
 from orchestrator.trading_orchestrator import TradingOrchestrator
+from risk.models import RiskCheckResult
+from scoring.models import Direction, ScoreComponents, ScoreTier, TradeRecommendation
+from validators.models import TechnicalIndicators, TechnicalValidation, ValidatedSignal, ValidationStatus
 
 
 def make_social_message(content: str = "Test message") -> SocialMessage:
@@ -40,6 +44,74 @@ def make_analyzed_message(
     return AnalyzedMessage(
         message=make_social_message(),
         sentiment=sentiment,
+    )
+
+
+def make_validated_signal(should_trade: bool = True) -> ValidatedSignal:
+    """Create a test validated signal."""
+    indicators = TechnicalIndicators(
+        rsi=50.0,
+        macd_histogram=0.5,
+        macd_trend="rising",
+        stochastic_k=50.0,
+        stochastic_d=50.0,
+        adx=25.0,
+    )
+    validation = TechnicalValidation(
+        status=ValidationStatus.PASS if should_trade else ValidationStatus.VETO,
+        indicators=indicators,
+        veto_reasons=[] if should_trade else ["RSI overbought"],
+    )
+    return ValidatedSignal(
+        message=make_analyzed_message(),
+        validation=validation,
+    )
+
+
+def make_recommendation(tier: ScoreTier = ScoreTier.STRONG) -> TradeRecommendation:
+    """Create a test trade recommendation."""
+    components = ScoreComponents(
+        sentiment_score=85.0,
+        technical_score=80.0,
+        sentiment_weight=0.4,
+        technical_weight=0.6,
+        confluence_bonus=0.1,
+        credibility_multiplier=1.0,
+        time_factor=1.0,
+    )
+    return TradeRecommendation(
+        symbol="AAPL",
+        direction=Direction.LONG,
+        tier=tier,
+        score=85.0,
+        position_size_percent=2.0,
+        entry_price=150.0,
+        stop_loss=145.0,
+        take_profit=165.0,
+        risk_reward_ratio=3.0,
+        components=components,
+        reasoning="Strong sentiment",
+        timestamp=datetime.now(),
+    )
+
+
+def make_risk_result(approved: bool = True) -> RiskCheckResult:
+    """Create a test risk check result."""
+    return RiskCheckResult(
+        approved=approved,
+        adjusted_quantity=10,
+        adjusted_value=1500.0,
+        rejection_reason=None if approved else "Max daily loss exceeded",
+    )
+
+
+def make_gate_status(is_open: bool = True, factor: float = 1.0) -> GateStatus:
+    """Create a test gate status."""
+    return GateStatus(
+        timestamp=datetime.now(),
+        is_open=is_open,
+        checks=[GateCheckResult(name="test", passed=is_open, reason=None, data={})],
+        position_size_factor=factor,
     )
 
 
@@ -292,3 +364,106 @@ class TestMessageRouting:
 
         assert result.status == "error"
         assert "Analysis failed" in result.error
+
+
+class TestImmediateProcessing:
+    """Tests for immediate processing pipeline."""
+
+    @pytest.fixture
+    def settings(self) -> OrchestratorSettings:
+        return OrchestratorSettings()
+
+    @pytest.fixture
+    def mock_components(self) -> dict:
+        return {
+            "collector_manager": MagicMock(),
+            "analyzer_manager": AsyncMock(),
+            "technical_validator": AsyncMock(),
+            "signal_scorer": MagicMock(),
+            "risk_manager": MagicMock(),
+            "market_gate": AsyncMock(),
+            "trade_executor": AsyncMock(),
+        }
+
+    @pytest.fixture
+    def orchestrator(self, mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
+        return TradingOrchestrator(
+            collector_manager=mock_components["collector_manager"],
+            analyzer_manager=mock_components["analyzer_manager"],
+            technical_validator=mock_components["technical_validator"],
+            signal_scorer=mock_components["signal_scorer"],
+            risk_manager=mock_components["risk_manager"],
+            market_gate=mock_components["market_gate"],
+            trade_executor=mock_components["trade_executor"],
+            settings=settings,
+        )
+
+    @pytest.mark.asyncio
+    async def test_process_immediate_full_flow(
+        self, orchestrator: TradingOrchestrator, mock_components: dict
+    ) -> None:
+        """Full pipeline executes successfully."""
+        mock_components["technical_validator"].validate.return_value = make_validated_signal(True)
+        mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.STRONG)
+        mock_components["risk_manager"].check_trade.return_value = make_risk_result(True)
+        mock_components["market_gate"].check.return_value = make_gate_status(True)
+        mock_components["trade_executor"].execute.return_value = MagicMock(success=True)
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "executed"
+        mock_components["trade_executor"].execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_process_immediate_vetoed(
+        self, orchestrator: TradingOrchestrator, mock_components: dict
+    ) -> None:
+        """Vetoed signals don't reach execution."""
+        mock_components["technical_validator"].validate.return_value = make_validated_signal(False)
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "vetoed"
+        mock_components["trade_executor"].execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_immediate_low_score(
+        self, orchestrator: TradingOrchestrator, mock_components: dict
+    ) -> None:
+        """NO_TRADE tier doesn't reach execution."""
+        mock_components["technical_validator"].validate.return_value = make_validated_signal(True)
+        mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.NO_TRADE)
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "low_score"
+        mock_components["trade_executor"].execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_immediate_risk_rejected(
+        self, orchestrator: TradingOrchestrator, mock_components: dict
+    ) -> None:
+        """Risk rejection prevents execution."""
+        mock_components["technical_validator"].validate.return_value = make_validated_signal(True)
+        mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.STRONG)
+        mock_components["risk_manager"].check_trade.return_value = make_risk_result(False)
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "risk_rejected"
+        mock_components["trade_executor"].execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_process_immediate_gate_closed(
+        self, orchestrator: TradingOrchestrator, mock_components: dict
+    ) -> None:
+        """Closed gate prevents execution."""
+        mock_components["technical_validator"].validate.return_value = make_validated_signal(True)
+        mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.STRONG)
+        mock_components["risk_manager"].check_trade.return_value = make_risk_result(True)
+        mock_components["market_gate"].check.return_value = make_gate_status(False)
+
+        result = await orchestrator._process_immediate(make_analyzed_message())
+
+        assert result.status == "gate_closed"
+        mock_components["trade_executor"].execute.assert_not_called()

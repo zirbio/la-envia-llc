@@ -12,7 +12,9 @@ from models.social_message import SocialMessage
 from orchestrator.models import OrchestratorState, ProcessResult
 from orchestrator.settings import OrchestratorSettings
 from risk.risk_manager import RiskManager
+from scoring.models import ScoreTier
 from scoring.signal_scorer import SignalScorer
+from validators.models import TechnicalIndicators, TechnicalValidation, ValidatedSignal, ValidationStatus
 from validators.technical_validator import TechnicalValidator
 
 
@@ -182,8 +184,131 @@ class TradingOrchestrator:
             return ProcessResult(status="error", error=str(e))
 
     async def _process_immediate(self, analyzed: AnalyzedMessage) -> ProcessResult:
-        """Process high-signal message immediately (placeholder)."""
-        return ProcessResult(status="executed")
+        """Process high-signal message through full pipeline.
+
+        Pipeline: validate -> score -> risk check -> gate check -> execute
+
+        Args:
+            analyzed: Analyzed message from sentiment analysis.
+
+        Returns:
+            ProcessResult with status and details of processing outcome.
+        """
+        symbol = self._extract_symbol(analyzed)
+
+        # Step 1: Technical validation
+        try:
+            validated = await self._validator.validate(analyzed)
+        except Exception as e:
+            if self._settings.continue_without_validator:
+                logger.warning(f"Validator error, continuing: {e}")
+                validated = self._create_unvalidated_signal(analyzed)
+            else:
+                return ProcessResult(status="error", symbol=symbol, error=f"Validation error: {e}")
+
+        if not validated.should_trade():
+            return ProcessResult(status="vetoed", symbol=symbol)
+
+        # Step 2: Scoring
+        try:
+            recommendation = self._scorer.score(validated)
+        except Exception as e:
+            return ProcessResult(status="error", symbol=symbol, error=f"Scoring error: {e}")
+
+        if recommendation.tier == ScoreTier.NO_TRADE:
+            return ProcessResult(status="low_score", symbol=symbol, recommendation=recommendation)
+
+        # Step 3: Risk check
+        try:
+            risk_result = self._risk_manager.check_trade(
+                recommendation,
+                recommendation.position_size_percent,
+                self._get_current_price(symbol),
+            )
+        except Exception as e:
+            return ProcessResult(status="error", symbol=symbol, error=f"Risk error: {e}")
+
+        if not risk_result.approved:
+            return ProcessResult(status="risk_rejected", symbol=symbol, recommendation=recommendation)
+
+        # Step 4: Gate check
+        try:
+            gate_status = await self._gate.check()
+        except Exception as e:
+            if self._settings.gate_fail_safe_closed:
+                logger.warning(f"Gate error, treating as closed: {e}")
+                return ProcessResult(status="gate_closed", symbol=symbol, recommendation=recommendation)
+            else:
+                return ProcessResult(status="error", symbol=symbol, error=f"Gate error: {e}")
+
+        if not gate_status.is_open:
+            return ProcessResult(status="gate_closed", symbol=symbol, recommendation=recommendation)
+
+        # Step 5: Execute
+        try:
+            exec_result = await self._executor.execute(recommendation, risk_result, gate_status)
+        except Exception as e:
+            return ProcessResult(status="error", symbol=symbol, error=f"Execution error: {e}")
+
+        return ProcessResult(
+            status="executed",
+            symbol=symbol,
+            recommendation=recommendation,
+            execution_result=exec_result,
+        )
+
+    def _extract_symbol(self, analyzed: AnalyzedMessage) -> str | None:
+        """Extract primary symbol from analyzed message.
+
+        Args:
+            analyzed: Analyzed message to extract symbol from.
+
+        Returns:
+            First ticker symbol found, or None if no tickers.
+        """
+        tickers = analyzed.get_tickers()
+        return tickers[0] if tickers else None
+
+    def _get_current_price(self, symbol: str | None) -> float:
+        """Get current price for symbol.
+
+        Note: This is a placeholder. In production, this would
+        fetch real-time price from a market data source.
+
+        Args:
+            symbol: Ticker symbol to get price for.
+
+        Returns:
+            Current price (placeholder returns 150.0).
+        """
+        return 150.0
+
+    def _create_unvalidated_signal(self, analyzed: AnalyzedMessage) -> ValidatedSignal:
+        """Create pass-through signal when validator fails.
+
+        Used when continue_without_validator is True and the
+        technical validator encounters an error.
+
+        Args:
+            analyzed: Original analyzed message.
+
+        Returns:
+            ValidatedSignal with PASS status and warning.
+        """
+        validation = TechnicalValidation(
+            status=ValidationStatus.PASS,
+            indicators=TechnicalIndicators(
+                rsi=50.0,
+                macd_histogram=0.0,
+                macd_trend="flat",
+                stochastic_k=50.0,
+                stochastic_d=50.0,
+                adx=25.0,
+            ),
+            veto_reasons=[],
+            warnings=["Validation skipped due to error"],
+        )
+        return ValidatedSignal(message=analyzed, validation=validation)
 
     def _is_high_signal(self, msg: AnalyzedMessage) -> bool:
         """Determine if message requires immediate processing.
