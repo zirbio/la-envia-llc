@@ -9,7 +9,7 @@ import pytest
 from src.analyzers.analyzed_message import AnalyzedMessage
 from src.analyzers.sentiment_result import SentimentLabel, SentimentResult
 from src.models.social_message import SocialMessage, SourceType
-from orchestrator.models import OrchestratorState
+from orchestrator.models import OrchestratorState, ProcessResult
 from orchestrator.settings import OrchestratorSettings
 from orchestrator.trading_orchestrator import TradingOrchestrator
 
@@ -226,3 +226,69 @@ class TestHighSignalDetection:
     ) -> None:
         msg = make_analyzed_message(confidence=0.85, label="bearish")
         assert orchestrator._is_high_signal(msg) is True
+
+
+class TestMessageRouting:
+    """Tests for message routing logic."""
+
+    @pytest.fixture
+    def settings(self) -> OrchestratorSettings:
+        return OrchestratorSettings(immediate_threshold=0.85)
+
+    @pytest.fixture
+    def mock_analyzer(self) -> AsyncMock:
+        return AsyncMock()
+
+    @pytest.fixture
+    def orchestrator(self, settings: OrchestratorSettings, mock_analyzer: AsyncMock) -> TradingOrchestrator:
+        return TradingOrchestrator(
+            collector_manager=MagicMock(),
+            analyzer_manager=mock_analyzer,
+            technical_validator=AsyncMock(),
+            signal_scorer=MagicMock(),
+            risk_manager=MagicMock(),
+            market_gate=AsyncMock(),
+            trade_executor=AsyncMock(),
+            settings=settings,
+        )
+
+    @pytest.mark.asyncio
+    async def test_on_message_routes_high_signal_to_immediate(
+        self, orchestrator: TradingOrchestrator, mock_analyzer: AsyncMock
+    ) -> None:
+        """High-signal messages are processed immediately."""
+        high_signal_msg = make_analyzed_message(confidence=0.9, label="bullish")
+        mock_analyzer.analyze.return_value = high_signal_msg
+
+        # Mock the immediate processing
+        orchestrator._process_immediate = AsyncMock(return_value=ProcessResult(status="executed"))
+
+        result = await orchestrator._on_message(make_social_message())
+
+        orchestrator._process_immediate.assert_called_once()
+        assert result.status == "executed"
+
+    @pytest.mark.asyncio
+    async def test_on_message_routes_low_signal_to_buffer(
+        self, orchestrator: TradingOrchestrator, mock_analyzer: AsyncMock
+    ) -> None:
+        """Low-signal messages are added to buffer."""
+        low_signal_msg = make_analyzed_message(confidence=0.5, label="bullish")
+        mock_analyzer.analyze.return_value = low_signal_msg
+
+        result = await orchestrator._on_message(make_social_message())
+
+        assert len(orchestrator._message_buffer) == 1
+        assert result.status == "buffered"
+
+    @pytest.mark.asyncio
+    async def test_on_message_handles_analyzer_error(
+        self, orchestrator: TradingOrchestrator, mock_analyzer: AsyncMock
+    ) -> None:
+        """Analyzer errors are handled gracefully."""
+        mock_analyzer.analyze.side_effect = Exception("Analysis failed")
+
+        result = await orchestrator._on_message(make_social_message())
+
+        assert result.status == "error"
+        assert "Analysis failed" in result.error

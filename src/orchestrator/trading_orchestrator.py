@@ -152,8 +152,38 @@ class TradingOrchestrator:
         asyncio.create_task(self._on_message(message))
 
     async def _on_message(self, message: SocialMessage) -> ProcessResult:
-        """Process incoming message (placeholder)."""
-        return ProcessResult(status="buffered")
+        """Process incoming message from collectors.
+
+        Routes high-signal messages to immediate processing,
+        others to batch buffer.
+
+        Args:
+            message: Raw social message from collector.
+
+        Returns:
+            ProcessResult indicating outcome.
+        """
+        try:
+            # Step 1: Analyze message
+            analyzed = await self._analyzer.analyze(message)
+
+            # Step 2: Route based on signal strength
+            if self._is_high_signal(analyzed):
+                return await self._process_immediate(analyzed)
+            else:
+                self._message_buffer.append(analyzed)
+                # Check buffer size limit
+                if len(self._message_buffer) >= self._settings.max_buffer_size:
+                    await self._process_batch()
+                return ProcessResult(status="buffered")
+
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+            return ProcessResult(status="error", error=str(e))
+
+    async def _process_immediate(self, analyzed: AnalyzedMessage) -> ProcessResult:
+        """Process high-signal message immediately (placeholder)."""
+        return ProcessResult(status="executed")
 
     def _is_high_signal(self, msg: AnalyzedMessage) -> bool:
         """Determine if message requires immediate processing.
