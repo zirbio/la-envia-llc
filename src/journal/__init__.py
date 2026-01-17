@@ -3,6 +3,7 @@
 
 from .metrics_calculator import MetricsCalculator
 from .models import JournalEntry, PatternAnalysis, TradingMetrics
+from .pattern_analyzer import PatternAnalyzer
 from .settings import JournalSettings
 from .trade_logger import TradeLogger
 
@@ -11,6 +12,7 @@ __all__ = [
     "JournalSettings",
     "MetricsCalculator",
     "PatternAnalysis",
+    "PatternAnalyzer",
     "TradeLogger",
     "TradingMetrics",
 ]
