@@ -28,7 +28,7 @@ class MetricsCalculator:
             return self._empty_metrics(period_days)
 
         winners = [e for e in closed_entries if e.pnl_dollars > 0]
-        losers = [e for e in closed_entries if e.pnl_dollars <= 0]
+        losers = [e for e in closed_entries if e.pnl_dollars < 0]
 
         total_trades = len(closed_entries)
         winning_trades = len(winners)
@@ -41,7 +41,7 @@ class MetricsCalculator:
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
 
         avg_win_dollars = gross_profit / winning_trades if winning_trades > 0 else 0.0
-        avg_loss_dollars = -gross_loss / losing_trades if losing_trades > 0 else 0.0
+        avg_loss_dollars = gross_loss / losing_trades if losing_trades > 0 else 0.0
 
         avg_win_r = sum(e.r_multiple for e in winners) / winning_trades if winning_trades > 0 else 0.0
         avg_loss_r = abs(sum(e.r_multiple for e in losers)) / losing_trades if losing_trades > 0 else 0.0
@@ -142,7 +142,7 @@ class MetricsCalculator:
         returns = [e.pnl_percent for e in entries]
         avg_return = sum(returns) / len(returns)
 
-        variance = sum((r - avg_return) ** 2 for r in returns) / len(returns)
+        variance = sum((r - avg_return) ** 2 for r in returns) / (len(returns) - 1)
         std_dev = math.sqrt(variance)
 
         if std_dev == 0:

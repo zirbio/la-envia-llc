@@ -193,7 +193,7 @@ class TestMetricsCalculator:
         """calculate should compute correct average win and loss amounts."""
         calculator = MetricsCalculator()
         # Wins: 100, 200, 300 -> avg = 200
-        # Losses: -50, -150 -> avg = -100
+        # Losses: -50, -150 -> avg_loss = 100 (positive, consistent with avg_loss_r)
         entries = [
             make_closed_entry("1", "NVDA", pnl_dollars=100.0, pnl_percent=1.0, r_multiple=1.0),
             make_closed_entry("2", "AAPL", pnl_dollars=200.0, pnl_percent=2.0, r_multiple=2.0),
@@ -205,7 +205,7 @@ class TestMetricsCalculator:
         metrics = calculator.calculate(entries=entries, period_days=30)
 
         assert metrics.avg_win_dollars == 200.0
-        assert metrics.avg_loss_dollars == -100.0
+        assert metrics.avg_loss_dollars == 100.0
         assert metrics.avg_win_r == 2.0
         assert metrics.avg_loss_r == 1.0
 
