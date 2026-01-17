@@ -171,6 +171,15 @@ class ScoringSettings(BaseModel):
     )
 
 
+class RiskSettings(BaseModel):
+    """Settings for risk management."""
+
+    enabled: bool = True
+    max_position_value: float = Field(default=1000.0, gt=0)
+    max_daily_loss: float = Field(default=500.0, gt=0)
+    unrealized_warning_threshold: float = Field(default=300.0, gt=0)
+
+
 class AlpacaConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ALPACA_")
 
@@ -196,6 +205,7 @@ class Settings(BaseModel):
     analyzers: AnalyzersSettings = Field(default_factory=AnalyzersSettings)
     validators: ValidatorsSettings = Field(default_factory=ValidatorsSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
+    risk_settings: RiskSettings = Field(default_factory=RiskSettings)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 
