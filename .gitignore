@@ -62,3 +62,6 @@ config/secrets.yaml
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Worktrees
+.worktrees/
