@@ -58,3 +58,25 @@ class TestTwitterCollector:
 
         assert "AAPL" in tickers
         assert "MSFT" in tickers
+
+    @pytest.mark.asyncio
+    async def test_connect_sets_connected_flag(self, collector):
+        with patch.dict("sys.modules", {"twscrape": MagicMock()}):
+            await collector.connect()
+            assert collector._connected is True
+
+    @pytest.mark.asyncio
+    async def test_disconnect_clears_state(self, collector):
+        collector._connected = True
+        collector._api = MagicMock()
+
+        await collector.disconnect()
+
+        assert collector._connected is False
+        assert collector._api is None
+
+    @pytest.mark.asyncio
+    async def test_stream_raises_when_not_connected(self, collector):
+        with pytest.raises(RuntimeError, match="Collector not connected"):
+            async for _ in collector.stream():
+                pass

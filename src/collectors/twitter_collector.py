@@ -1,6 +1,6 @@
 # src/collectors/twitter_collector.py
 from datetime import datetime, timezone
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator
 
 from src.collectors.base import BaseCollector
 from src.models.social_message import SocialMessage, SourceType
@@ -60,8 +60,9 @@ class TwitterCollector(BaseCollector):
                     if tweet.id > last_id:
                         self._last_tweet_ids[username] = tweet.id
                         yield tweet
-        except Exception:
-            pass
+        except Exception as e:
+            # Log error but continue with other accounts
+            print(f"Error fetching tweets for {username}: {e}")
 
     def _parse_tweet(self, tweet) -> SocialMessage:
         """Convert a twscrape Tweet to SocialMessage."""
