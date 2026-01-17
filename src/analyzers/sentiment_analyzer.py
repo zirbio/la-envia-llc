@@ -65,7 +65,12 @@ class SentimentAnalyzer:
         return results
 
     def _parse_result(self, predictions: list[dict]) -> SentimentResult:
-        """Parse model output to SentimentResult."""
+        """Parse model output to SentimentResult.
+
+        Score semantics: 0.0 = most bearish, 0.5 = neutral, 1.0 = most bullish.
+        For bearish predictions, we invert the score (1.0 - bearish_score) so that
+        a strong bearish prediction (0.85) becomes a low score (0.15).
+        """
         label_scores = {}
         for pred in predictions:
             label = pred["label"].lower()
@@ -81,13 +86,9 @@ class SentimentAnalyzer:
             score = bullish_score
         elif bearish_score == max_score:
             label = SentimentLabel.BEARISH
-            score = 1.0 - bearish_score
+            score = 1.0 - bearish_score  # Invert: strong bearish -> low score
         else:
             label = SentimentLabel.NEUTRAL
             score = 0.5
 
-        return SentimentResult(
-            label=label,
-            score=score if label == SentimentLabel.BULLISH else (1.0 - bearish_score if label == SentimentLabel.BEARISH else 0.5),
-            confidence=max_score,
-        )
+        return SentimentResult(label=label, score=score, confidence=max_score)
