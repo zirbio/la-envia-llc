@@ -3,6 +3,8 @@
 import pandas as pd
 import pandas_ta as ta
 
+from src.validators.models import TechnicalIndicators
+
 
 class IndicatorEngine:
     """Calculates technical indicators from price data."""
@@ -348,3 +350,47 @@ class IndicatorEngine:
         adx_value = max(0.0, min(100.0, adx_value))
 
         return adx_value
+
+    def calculate_all(self, ohlc: pd.DataFrame) -> TechnicalIndicators:
+        """
+        Calculate all technical indicators from OHLC data.
+
+        This method combines all individual indicator calculations (RSI, MACD,
+        Stochastic, ADX) into a single TechnicalIndicators object. It extracts
+        the necessary price data from the OHLC DataFrame and calls each
+        calculation method.
+
+        Args:
+            ohlc: DataFrame with 'open', 'high', 'low', 'close' columns
+
+        Returns:
+            TechnicalIndicators with all calculated values
+            Divergence fields are set to None (placeholder for future implementation)
+
+        Raises:
+            None - handles all edge cases gracefully through individual methods
+        """
+        # Extract price series from OHLC DataFrame
+        # Each individual calculation method handles edge cases and returns neutral defaults
+        close = ohlc['close']
+        high = ohlc['high']
+        low = ohlc['low']
+
+        # Calculate each indicator using the individual methods
+        rsi = self.calculate_rsi(close)
+        macd_histogram, macd_trend = self.calculate_macd(close)
+        stochastic_k, stochastic_d = self.calculate_stochastic(high, low, close)
+        adx = self.calculate_adx(high, low, close)
+
+        # Build and return TechnicalIndicators object
+        # Divergence fields are set to None for now (placeholder)
+        return TechnicalIndicators(
+            rsi=rsi,
+            macd_histogram=macd_histogram,
+            macd_trend=macd_trend,
+            stochastic_k=stochastic_k,
+            stochastic_d=stochastic_d,
+            adx=adx,
+            rsi_divergence=None,
+            macd_divergence=None,
+        )

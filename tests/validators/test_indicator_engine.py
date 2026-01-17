@@ -227,3 +227,104 @@ class TestIndicatorEngine:
         nan_series = pd.Series([np.nan, np.nan, np.nan])
         adx = engine.calculate_adx(nan_series, nan_series, nan_series)
         assert adx == 0.0, "Should return 0.0 for ADX with NaN values"
+
+    def test_calculate_all_returns_indicators(self, engine: IndicatorEngine) -> None:
+        """Test that calculate_all returns TechnicalIndicators with valid values."""
+        # Create OHLC DataFrame with sufficient data for all indicators
+        # Need at least 35 data points for MACD (26 + 9)
+        ohlc = pd.DataFrame({
+            'open': [100 + i * 0.5 for i in range(50)],
+            'high': [105 + i * 0.5 for i in range(50)],
+            'low': [95 + i * 0.5 for i in range(50)],
+            'close': [100 + i for i in range(50)]
+        })
+
+        result = engine.calculate_all(ohlc)
+
+        # Check that result is a TechnicalIndicators object
+        from src.validators.models import TechnicalIndicators
+        assert isinstance(result, TechnicalIndicators), (
+            "Should return TechnicalIndicators instance"
+        )
+
+        # Check RSI is in valid range
+        assert 0 <= result.rsi <= 100, f"RSI {result.rsi} is outside [0, 100]"
+
+        # Check MACD values
+        assert isinstance(result.macd_histogram, float), (
+            "MACD histogram should be a float"
+        )
+        assert result.macd_trend in ["rising", "falling", "flat"], (
+            f"MACD trend should be 'rising', 'falling', or 'flat', got {result.macd_trend}"
+        )
+
+        # Check Stochastic values
+        assert 0 <= result.stochastic_k <= 100, (
+            f"Stochastic %K {result.stochastic_k} is outside [0, 100]"
+        )
+        assert 0 <= result.stochastic_d <= 100, (
+            f"Stochastic %D {result.stochastic_d} is outside [0, 100]"
+        )
+
+        # Check ADX is in valid range
+        assert 0 <= result.adx <= 100, f"ADX {result.adx} is outside [0, 100]"
+
+        # Check divergence fields are None (placeholder)
+        assert result.rsi_divergence is None, (
+            "RSI divergence should be None for now"
+        )
+        assert result.macd_divergence is None, (
+            "MACD divergence should be None for now"
+        )
+
+    def test_calculate_all_with_insufficient_data(self, engine: IndicatorEngine) -> None:
+        """Test that calculate_all returns neutral defaults with insufficient data."""
+        # Create OHLC DataFrame with insufficient data (only 5 rows)
+        ohlc = pd.DataFrame({
+            'open': [100, 101, 102, 103, 104],
+            'high': [105, 106, 107, 108, 109],
+            'low': [95, 96, 97, 98, 99],
+            'close': [100, 101, 102, 103, 104]
+        })
+
+        result = engine.calculate_all(ohlc)
+
+        # Check that result is a TechnicalIndicators object
+        from src.validators.models import TechnicalIndicators
+        assert isinstance(result, TechnicalIndicators), (
+            "Should return TechnicalIndicators instance"
+        )
+
+        # Check RSI returns neutral default (50.0)
+        assert result.rsi == 50.0, (
+            f"RSI should be 50.0 for insufficient data, got {result.rsi}"
+        )
+
+        # Check MACD returns neutral defaults (0.0, 'flat')
+        assert result.macd_histogram == 0.0, (
+            f"MACD histogram should be 0.0 for insufficient data, got {result.macd_histogram}"
+        )
+        assert result.macd_trend == "flat", (
+            f"MACD trend should be 'flat' for insufficient data, got {result.macd_trend}"
+        )
+
+        # Check Stochastic returns neutral defaults (50.0, 50.0)
+        assert result.stochastic_k == 50.0, (
+            f"Stochastic %K should be 50.0 for insufficient data, got {result.stochastic_k}"
+        )
+        assert result.stochastic_d == 50.0, (
+            f"Stochastic %D should be 50.0 for insufficient data, got {result.stochastic_d}"
+        )
+
+        # Check ADX returns neutral default (0.0)
+        assert result.adx == 0.0, (
+            f"ADX should be 0.0 for insufficient data, got {result.adx}"
+        )
+
+        # Check divergence fields are None
+        assert result.rsi_divergence is None, (
+            "RSI divergence should be None"
+        )
+        assert result.macd_divergence is None, (
+            "MACD divergence should be None"
+        )
