@@ -102,3 +102,55 @@ class TestIndicatorEngine:
         # We accept either 50.0 or a value very close to 50
         assert rsi == 50.0 or abs(rsi - 50.0) < 0.1, \
             f"RSI should be 50.0 or very close for flat prices, got {rsi}"
+
+    def test_macd_histogram_positive_uptrend(self, engine: IndicatorEngine) -> None:
+        """Test that MACD histogram is positive for uptrend prices."""
+        # Create exponential uptrend data (accelerating growth)
+        # This creates a realistic uptrend where MACD histogram is positive
+        prices = pd.Series([100 * (1.02 ** i) for i in range(50)])
+
+        histogram, trend = engine.calculate_macd(prices, fast=12, slow=26, signal=9)
+
+        assert histogram > 0, "MACD histogram should be positive for uptrend"
+        assert trend in ["rising", "falling", "flat"], (
+            f"Trend should be 'rising', 'falling', or 'flat', got {trend}"
+        )
+
+    def test_macd_trend_rising(self, engine: IndicatorEngine) -> None:
+        """Test MACD trend detection for rising, falling, and flat."""
+        # Test rising trend: exponential growth (accelerating momentum)
+        rising_prices = pd.Series([100 * (1.02 ** i) for i in range(50)])
+        _, trend_rising = engine.calculate_macd(rising_prices)
+        assert trend_rising == "rising", "Should detect rising trend"
+
+        # Test falling trend: exponential decay (accelerating downtrend)
+        falling_prices = pd.Series([200 * (0.98 ** i) for i in range(50)])
+        _, trend_falling = engine.calculate_macd(falling_prices)
+        assert trend_falling == "falling", "Should detect falling trend"
+
+        # Test flat trend: sideways movement
+        flat_prices = pd.Series([100.0 + (i % 3 - 1) * 0.5 for i in range(50)])
+        _, trend_flat = engine.calculate_macd(flat_prices)
+        assert trend_flat in ["rising", "falling", "flat"], (
+            "Should return valid trend for flat market"
+        )
+
+    def test_macd_insufficient_data(self, engine: IndicatorEngine) -> None:
+        """Test that MACD returns (0.0, 'flat') for insufficient data."""
+        # Test with very short data
+        short_prices = pd.Series([100, 101, 102])
+        histogram, trend = engine.calculate_macd(short_prices)
+        assert histogram == 0.0, "Should return 0.0 histogram for insufficient data"
+        assert trend == "flat", "Should return 'flat' trend for insufficient data"
+
+        # Test with empty series
+        empty_prices = pd.Series([], dtype=float)
+        histogram, trend = engine.calculate_macd(empty_prices)
+        assert histogram == 0.0, "Should return 0.0 histogram for empty series"
+        assert trend == "flat", "Should return 'flat' trend for empty series"
+
+        # Test with NaN values
+        nan_prices = pd.Series([np.nan, np.nan, np.nan])
+        histogram, trend = engine.calculate_macd(nan_prices)
+        assert histogram == 0.0, "Should return 0.0 histogram for NaN values"
+        assert trend == "flat", "Should return 'flat' trend for NaN values"
