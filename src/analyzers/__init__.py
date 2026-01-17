@@ -5,6 +5,7 @@ from src.analyzers.sentiment_analyzer import SentimentAnalyzer
 from src.analyzers.claude_result import ClaudeAnalysisResult, CatalystType, RiskLevel
 from src.analyzers.claude_analyzer import ClaudeAnalyzer
 from src.analyzers.analyzed_message import AnalyzedMessage
+from src.analyzers.analyzer_manager import AnalyzerManager
 
 __all__ = [
     "SentimentResult",
@@ -15,4 +16,5 @@ __all__ = [
     "RiskLevel",
     "ClaudeAnalyzer",
     "AnalyzedMessage",
+    "AnalyzerManager",
 ]
