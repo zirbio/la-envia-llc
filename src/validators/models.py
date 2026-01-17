@@ -73,10 +73,10 @@ class TechnicalValidation:
 
     status: ValidationStatus
     indicators: TechnicalIndicators
-    confidence_modifier: float
     options_flow: Optional[OptionsFlowData] = None
     veto_reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    confidence_modifier: float = 1.0
 
 
 @dataclass
