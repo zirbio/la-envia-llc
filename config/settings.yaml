@@ -52,3 +52,23 @@ analyzers:
       - catalyst_classification
       - risk_assessment
       - context_analysis
+
+# CAPA 3: Technical Validation
+validators:
+  technical:
+    enabled: true
+    rsi_period: 14
+    rsi_overbought: 70.0
+    rsi_oversold: 30.0
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    stoch_k_period: 14
+    stoch_d_period: 3
+    adx_period: 14
+    adx_trend_threshold: 20.0
+    options_volume_spike_ratio: 2.0
+    iv_rank_warning_threshold: 80.0
+    veto_mode: true
+    lookback_bars: 50
+    timeframe: "5Min"

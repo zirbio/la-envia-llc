@@ -96,6 +96,33 @@ class AnalyzersSettings(BaseModel):
     claude: ClaudeAnalyzerSettings = Field(default_factory=ClaudeAnalyzerSettings)
 
 
+class TechnicalValidatorSettings(BaseModel):
+    """Settings for technical validator."""
+
+    enabled: bool = True
+    rsi_period: int = Field(default=14, ge=2, le=50)
+    rsi_overbought: float = Field(default=70.0, ge=50.0, le=100.0)
+    rsi_oversold: float = Field(default=30.0, ge=0.0, le=50.0)
+    macd_fast: int = Field(default=12, ge=5, le=20)
+    macd_slow: int = Field(default=26, ge=20, le=50)
+    macd_signal: int = Field(default=9, ge=5, le=15)
+    stoch_k_period: int = Field(default=14, ge=5, le=30)
+    stoch_d_period: int = Field(default=3, ge=2, le=10)
+    adx_period: int = Field(default=14, ge=5, le=30)
+    adx_trend_threshold: float = Field(default=20.0, ge=10.0, le=40.0)
+    options_volume_spike_ratio: float = Field(default=2.0, ge=1.0, le=10.0)
+    iv_rank_warning_threshold: float = Field(default=80.0, ge=50.0, le=100.0)
+    veto_mode: bool = True
+    lookback_bars: int = Field(default=50, ge=20, le=200)
+    timeframe: str = "5Min"
+
+
+class ValidatorsSettings(BaseModel):
+    """Settings for all validators."""
+
+    technical: TechnicalValidatorSettings = Field(default_factory=TechnicalValidatorSettings)
+
+
 class AlpacaConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ALPACA_")
 
@@ -119,6 +146,7 @@ class Settings(BaseModel):
     collectors: CollectorsConfig = Field(default_factory=CollectorsConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
     analyzers: AnalyzersSettings = Field(default_factory=AnalyzersSettings)
+    validators: ValidatorsSettings = Field(default_factory=ValidatorsSettings)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 
