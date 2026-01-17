@@ -1,2 +1,37 @@
 # Intraday Trading System Configuration
-# This file will be populated in Task 3: Configuration System
+
+system:
+  name: "Intraday Trading System"
+  version: "1.0.0"
+  mode: "paper"
+  timezone: "America/New_York"
+
+collectors:
+  twitter:
+    enabled: true
+    engine: "twscrape"
+    accounts_pool_size: 5
+    rate_limit_buffer: 0.8
+    refresh_interval_seconds: 15
+
+  reddit:
+    enabled: true
+    use_streaming: true
+    batch_fallback_interval: 60
+
+  stocktwits:
+    enabled: true
+    refresh_interval_seconds: 30
+
+risk:
+  circuit_breakers:
+    per_trade:
+      max_loss_percent: 1.0
+      hard_stop: true
+    daily:
+      max_loss_percent: 3.0
+      max_trades_after_loss: 0
+      cooldown_minutes: 60
+    weekly:
+      max_loss_percent: 6.0
+      force_paper_mode: true
