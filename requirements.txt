@@ -1,5 +1,6 @@
 # Core
 alpaca-py>=0.21.0
+pandas-ta>=0.4.71b0
 
 # ML/AI (Phase 2 - Sentiment Analysis)
 transformers>=4.36.0
