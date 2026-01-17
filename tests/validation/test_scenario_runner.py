@@ -32,6 +32,19 @@ class FailingScenario(Scenario):
         return False
 
 
+class ExceptionScenario(Scenario):
+    name = "exception_scenario"
+
+    async def setup(self):
+        pass
+
+    async def execute(self, engine):
+        raise RuntimeError("Scenario execution failed")
+
+    async def verify(self, engine) -> bool:
+        return True
+
+
 class TestScenarioRunner:
     @pytest.fixture
     def mock_engine(self):
@@ -68,3 +81,13 @@ class TestScenarioRunner:
         report = await runner.run_all()
         assert report.total == 1  # Stopped after first failure
         assert report.failed == 1
+
+    @pytest.mark.asyncio
+    async def test_run_all_handles_exception(self, mock_engine):
+        """Verify exceptions during scenario execution are captured."""
+        scenarios = [ExceptionScenario()]
+        runner = ScenarioRunner(engine=mock_engine, scenarios=scenarios)
+        report = await runner.run_all()
+        assert report.total == 1
+        assert report.failed == 1
+        assert "Scenario execution failed" in report.results[0].error
