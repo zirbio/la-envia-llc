@@ -352,3 +352,90 @@ class TestMarketGateChoppy:
 
         assert result.passed is False
         assert "error" in result.reason.lower()
+
+
+class TestMarketGateCheck:
+    """Tests for main check() method."""
+
+    @pytest.fixture
+    def settings(self) -> MarketGateSettings:
+        """Default settings for tests."""
+        return MarketGateSettings()
+
+    @pytest.mark.asyncio
+    async def test_check_returns_open_when_all_pass(self, settings: MarketGateSettings) -> None:
+        """check() returns is_open=True when all checks pass."""
+        mock_alpaca = AsyncMock()
+        mock_alpaca.get_latest_bar.side_effect = [
+            {"symbol": "SPY", "volume": 600_000},
+            {"symbol": "QQQ", "volume": 400_000},
+        ]
+        mock_alpaca.get_bars.return_value = [{"high": 455, "low": 450, "close": 453}]
+        mock_alpaca.get_atr.return_value = 2.5
+
+        mock_vix_fetcher = MagicMock()
+        mock_vix_fetcher.fetch_vix.return_value = 18.0
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+
+        # Use a time during market hours (not lunch)
+        test_time = datetime(2026, 1, 17, 10, 30, tzinfo=ET)
+        status = await gate.check(current_time=test_time)
+
+        assert status.is_open is True
+        assert status.position_size_factor == 1.0
+        assert len(status.checks) == 4
+
+    @pytest.mark.asyncio
+    async def test_check_returns_closed_when_any_fail(self, settings: MarketGateSettings) -> None:
+        """check() returns is_open=False when any check fails."""
+        mock_alpaca = AsyncMock()
+        mock_vix_fetcher = MagicMock()
+        mock_vix_fetcher.fetch_vix.return_value = 35.0  # VIX blocked
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+
+        # Even during market hours, VIX blocks
+        test_time = datetime(2026, 1, 17, 10, 30, tzinfo=ET)
+        status = await gate.check(current_time=test_time)
+
+        assert status.is_open is False
+        assert status.position_size_factor == 0.0
+
+    @pytest.mark.asyncio
+    async def test_check_returns_reduced_factor_when_vix_elevated(
+        self, settings: MarketGateSettings
+    ) -> None:
+        """check() returns factor 0.5 when VIX elevated but not blocked."""
+        mock_alpaca = AsyncMock()
+        mock_alpaca.get_latest_bar.side_effect = [
+            {"symbol": "SPY", "volume": 600_000},
+            {"symbol": "QQQ", "volume": 400_000},
+        ]
+        mock_alpaca.get_bars.return_value = [{"high": 455, "low": 450, "close": 453}]
+        mock_alpaca.get_atr.return_value = 2.5
+
+        mock_vix_fetcher = MagicMock()
+        mock_vix_fetcher.fetch_vix.return_value = 27.0  # Elevated
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+
+        test_time = datetime(2026, 1, 17, 10, 30, tzinfo=ET)
+        status = await gate.check(current_time=test_time)
+
+        assert status.is_open is True
+        assert status.position_size_factor == 0.5
+
+    @pytest.mark.asyncio
+    async def test_check_disabled_returns_open(self, settings: MarketGateSettings) -> None:
+        """check() returns is_open=True with factor 1.0 when gate disabled."""
+        settings.enabled = False
+        mock_alpaca = AsyncMock()
+        mock_vix_fetcher = MagicMock()
+
+        gate = MarketGate(mock_alpaca, settings, mock_vix_fetcher)
+        status = await gate.check()
+
+        assert status.is_open is True
+        assert status.position_size_factor == 1.0
+        assert len(status.checks) == 0

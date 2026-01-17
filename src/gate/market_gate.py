@@ -319,3 +319,59 @@ class MarketGate:
                 reason=f"Error checking choppy market: {e}",
                 data=data,
             )
+
+    async def check(self, current_time: datetime | None = None) -> GateStatus:
+        """Evaluate all market conditions.
+
+        Runs all 4 checks and combines results into GateStatus.
+
+        Args:
+            current_time: Time for trading hours check (defaults to now).
+
+        Returns:
+            GateStatus with combined results.
+        """
+        timestamp = datetime.now(ET)
+
+        # If gate disabled, return open status immediately
+        if not self._settings.enabled:
+            return GateStatus(
+                timestamp=timestamp,
+                is_open=True,
+                checks=[],
+                position_size_factor=1.0,
+            )
+
+        checks: list[GateCheckResult] = []
+
+        # 1. Trading hours check (synchronous)
+        hours_result = self._check_trading_hours(current_time)
+        checks.append(hours_result)
+
+        # 2. VIX check (synchronous, returns factor)
+        vix_result, vix_factor = self._check_vix()
+        checks.append(vix_result)
+
+        # 3. Volume check (async)
+        volume_result = await self._check_volume()
+        checks.append(volume_result)
+
+        # 4. Choppy market check (async)
+        choppy_result = await self._check_choppy_market()
+        checks.append(choppy_result)
+
+        # Determine if gate is open (all checks passed)
+        all_passed = all(check.passed for check in checks)
+
+        # Determine position size factor
+        if not all_passed:
+            factor = 0.0
+        else:
+            factor = vix_factor
+
+        return GateStatus(
+            timestamp=timestamp,
+            is_open=all_passed,
+            checks=checks,
+            position_size_factor=factor,
+        )
