@@ -174,3 +174,13 @@ notifications:
     - "Watchlist prepared"
     - "Mental state: focused"
     - "Risk parameters confirmed"
+
+# Phase 10: Journal
+journal:
+  enabled: true
+  data_dir: "data/trades"
+  auto_log_entries: true
+  auto_log_exits: true
+  default_period_days: 30
+  weekly_report_enabled: true
+  weekly_report_day: "saturday"
