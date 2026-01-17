@@ -180,6 +180,14 @@ class RiskSettings(BaseModel):
     unrealized_warning_threshold: float = Field(default=300.0, gt=0)
 
 
+class ExecutionSettings(BaseModel):
+    """Settings for trade execution."""
+
+    enabled: bool = True
+    paper_mode: bool = True
+    default_time_in_force: str = Field(default="day")
+
+
 class AlpacaConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ALPACA_")
 
@@ -206,6 +214,7 @@ class Settings(BaseModel):
     validators: ValidatorsSettings = Field(default_factory=ValidatorsSettings)
     scoring: ScoringSettings = Field(default_factory=ScoringSettings)
     risk_settings: RiskSettings = Field(default_factory=RiskSettings)
+    execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 

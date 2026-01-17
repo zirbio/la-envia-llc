@@ -122,3 +122,9 @@ risk_settings:
   max_position_value: 1000.0
   max_daily_loss: 500.0
   unrealized_warning_threshold: 300.0
+
+# CAPA 6: Execution
+execution:
+  enabled: true
+  paper_mode: true
+  default_time_in_force: "day"
