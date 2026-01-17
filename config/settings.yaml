@@ -115,3 +115,10 @@ scoring:
   tier1_sources:
     - unusual_whales
     - optionsflow
+
+# CAPA 5: Risk Management Settings
+risk_settings:
+  enabled: true
+  max_position_value: 1000.0
+  max_daily_loss: 500.0
+  unrealized_warning_threshold: 300.0
