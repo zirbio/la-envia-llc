@@ -63,3 +63,14 @@ class TestSocialMessage:
         )
         tickers = msg.extract_tickers(exclude_crypto=True)
         assert tickers == ["AAPL"]
+
+    def test_extract_tickers_includes_crypto_when_disabled(self):
+        msg = SocialMessage(
+            source=SourceType.TWITTER,
+            source_id="123",
+            author="test",
+            content="$BTC $ETH $AAPL",
+            timestamp=datetime.now(timezone.utc),
+        )
+        tickers = msg.extract_tickers(exclude_crypto=False)
+        assert tickers == ["BTC", "ETH", "AAPL"]
