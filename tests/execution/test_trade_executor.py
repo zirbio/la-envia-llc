@@ -10,6 +10,7 @@ from src.execution.models import ExecutionResult, TrackedPosition
 from src.risk.risk_manager import RiskManager
 from src.scoring.models import Direction, TradeRecommendation, ScoreComponents, ScoreTier
 from src.risk.models import RiskCheckResult
+from gate.models import GateCheckResult, GateStatus
 
 
 # Helper functions for test fixtures
@@ -480,3 +481,104 @@ async def test_sync_fallback_to_take_profit_on_order_error(
 
     # Should use take_profit as fallback: (310.00 - 300.00) * 12 = 120.00
     mock_risk_manager.record_close.assert_called_once_with("MSFT", 120.00)
+
+
+# Task 9: Gate Integration Tests
+
+
+class TestTradeExecutorGateIntegration:
+    """Tests for gate integration in TradeExecutor."""
+
+    @pytest.fixture
+    def mock_gate_status_open(self) -> GateStatus:
+        """Gate status with is_open=True."""
+        return GateStatus(
+            timestamp=datetime.now(),
+            is_open=True,
+            checks=[GateCheckResult(name="test", passed=True, reason=None, data={})],
+            position_size_factor=1.0,
+        )
+
+    @pytest.fixture
+    def mock_gate_status_closed(self) -> GateStatus:
+        """Gate status with is_open=False."""
+        return GateStatus(
+            timestamp=datetime.now(),
+            is_open=False,
+            checks=[GateCheckResult(name="vix", passed=False, reason="VIX too high", data={})],
+            position_size_factor=0.0,
+        )
+
+    @pytest.fixture
+    def mock_gate_status_elevated(self) -> GateStatus:
+        """Gate status with elevated VIX (factor 0.5)."""
+        return GateStatus(
+            timestamp=datetime.now(),
+            is_open=True,
+            checks=[GateCheckResult(name="vix", passed=True, reason=None, data={"status": "elevated"})],
+            position_size_factor=0.5,
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_respects_gate_closed(
+        self,
+        trade_executor: TradeExecutor,
+        mock_gate_status_closed: GateStatus,
+    ) -> None:
+        """Execute returns failure when gate is closed."""
+        recommendation = make_recommendation(symbol="AAPL", direction=Direction.LONG)
+        risk_result = make_risk_result(approved=True, quantity=100)
+
+        result = await trade_executor.execute(
+            recommendation, risk_result, gate_status=mock_gate_status_closed
+        )
+
+        assert result.success is False
+        assert "gate closed" in result.error_message.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_applies_size_factor(
+        self,
+        mock_alpaca_client: Mock,
+        mock_risk_manager: Mock,
+        mock_gate_status_elevated: GateStatus,
+    ) -> None:
+        """Execute applies position_size_factor to quantity."""
+        # Set up approved for 100 shares
+        recommendation = make_recommendation(symbol="AAPL", direction=Direction.LONG)
+        risk_result = make_risk_result(approved=True, quantity=100)
+
+        mock_alpaca_client.submit_order.return_value = {
+            "id": "order-123",
+            "filled_avg_price": 150.0,
+            "filled_qty": 50,
+        }
+
+        executor = TradeExecutor(mock_alpaca_client, mock_risk_manager)
+        result = await executor.execute(
+            recommendation, risk_result, gate_status=mock_gate_status_elevated
+        )
+
+        # Verify order was submitted with reduced quantity
+        call_args = mock_alpaca_client.submit_order.call_args
+        assert call_args.kwargs["qty"] == 50  # 100 * 0.5
+
+    @pytest.mark.asyncio
+    async def test_execute_without_gate_status(
+        self,
+        trade_executor: TradeExecutor,
+    ) -> None:
+        """Execute works normally when gate_status not provided."""
+        recommendation = make_recommendation(symbol="AAPL", direction=Direction.LONG)
+        risk_result = make_risk_result(approved=True, quantity=10)
+
+        # Mock the Alpaca client response
+        trade_executor._alpaca.submit_order.return_value = {
+            "id": "order-123",
+            "filled_avg_price": 150.0,
+            "filled_qty": 10,
+        }
+
+        result = await trade_executor.execute(recommendation, risk_result)
+
+        assert result.success is True

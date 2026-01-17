@@ -2,6 +2,7 @@
 """Trade executor for managing order execution and position tracking."""
 from datetime import datetime
 
+from gate.models import GateStatus
 from src.execution.alpaca_client import AlpacaClient
 from src.execution.models import ExecutionResult, TrackedPosition
 from src.risk.models import RiskCheckResult
@@ -40,20 +41,23 @@ class TradeExecutor:
         self,
         recommendation: TradeRecommendation,
         risk_result: RiskCheckResult,
+        gate_status: GateStatus | None = None,
     ) -> ExecutionResult:
         """Execute an approved trade.
 
         Steps:
         1. Check if risk_result.approved is True, else return failure
-        2. Call sync_positions() (placeholder for now, returns [])
-        3. Submit market order via alpaca_client.submit_order()
-        4. Track position in _tracked_positions
-        5. Call risk_manager.record_trade() and update_unrealized_pnl()
-        6. Return ExecutionResult
+        2. Check if gate is open (if provided), else return failure
+        3. Call sync_positions() (placeholder for now, returns [])
+        4. Submit market order via alpaca_client.submit_order()
+        5. Track position in _tracked_positions
+        6. Call risk_manager.record_trade() and update_unrealized_pnl()
+        7. Return ExecutionResult
 
         Args:
             recommendation: Trade recommendation to execute.
             risk_result: Result of risk check for the trade.
+            gate_status: Optional gate status to check before executing.
 
         Returns:
             ExecutionResult containing execution details.
@@ -73,15 +77,35 @@ class TradeExecutor:
                 timestamp=timestamp,
             )
 
-        # Step 2: Sync positions (placeholder - returns empty list)
+        # Step 2: Validate gate is open (if provided)
+        if gate_status is not None and not gate_status.is_open:
+            failed_checks = gate_status.get_failed_checks()
+            reasons = [f"{c.name}: {c.reason}" for c in failed_checks]
+            return ExecutionResult(
+                success=False,
+                order_id=None,
+                symbol=recommendation.symbol,
+                side=self._direction_to_side(recommendation.direction),
+                quantity=0,
+                filled_price=None,
+                error_message=f"Market gate closed - {'; '.join(reasons)}",
+                timestamp=timestamp,
+            )
+
+        # Apply position size factor from gate
+        adjusted_quantity = risk_result.adjusted_quantity
+        if gate_status is not None:
+            adjusted_quantity = int(adjusted_quantity * gate_status.position_size_factor)
+
+        # Step 3: Sync positions (placeholder - returns empty list)
         await self.sync_positions()
 
-        # Step 3: Submit market order via Alpaca
+        # Step 4: Submit market order via Alpaca
         try:
             side = self._direction_to_side(recommendation.direction)
             order = await self._alpaca.submit_order(
                 symbol=recommendation.symbol,
-                qty=risk_result.adjusted_quantity,
+                qty=adjusted_quantity,
                 side=side,
                 order_type="market",
             )
@@ -89,7 +113,7 @@ class TradeExecutor:
             # Extract order details
             order_id = order["id"]
             filled_price = order.get("filled_avg_price")
-            filled_qty = order.get("filled_qty", risk_result.adjusted_quantity)
+            filled_qty = order.get("filled_qty", adjusted_quantity)
 
             # Step 4: Track position
             tracked_position = TrackedPosition(
