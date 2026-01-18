@@ -69,6 +69,43 @@ def print_startup_banner(settings: Settings) -> None:
     logger.info("=" * 60)
 
 
+def load_and_validate_config() -> Settings:
+    """Load and validate configuration.
+
+    Returns:
+        Settings object loaded from YAML.
+
+    Raises:
+        SystemExit: If config file missing, env vars invalid, or YAML parsing fails.
+    """
+    # Load environment variables
+    load_dotenv()
+    logger.info("✓ Loaded environment variables")
+
+    # Validate env vars
+    validate_env_vars()
+    logger.info("✓ Environment variables validated")
+
+    # Check settings.yaml exists
+    config_path = Path("config/settings.yaml")
+    if not config_path.exists():
+        logger.error("config/settings.yaml not found")
+        sys.exit(1)
+
+    # Load settings
+    try:
+        settings = Settings.from_yaml(config_path)
+        logger.info("✓ Settings loaded from config/settings.yaml")
+    except Exception as e:
+        logger.error(f"Failed to parse settings.yaml: {e}")
+        sys.exit(1)
+
+    # Create data directories
+    create_data_dirs()
+
+    return settings
+
+
 async def main():
     """Main entry point for the trading system."""
     # Load environment variables
