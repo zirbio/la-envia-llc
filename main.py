@@ -438,3 +438,79 @@ def initialize_orchestrator(
     logger.info("✓ TradingOrchestrator initialized")
 
     return orchestrator
+
+
+async def main():
+    """Main entry point for the trading system."""
+    # Phase 1: Configuration
+    settings = load_and_validate_config()
+    print_startup_banner(settings)
+
+    # Phase 2: Core Infrastructure
+    alpaca_client, telegram = await initialize_infrastructure(settings)
+
+    # Phase 3: Analysis Components
+    analyzer_manager = await initialize_analyzers(settings)
+
+    # Phase 4: Collectors
+    collector_manager = initialize_collectors(settings, alpaca_client)
+
+    # Phase 5: Pipeline Components
+    components = initialize_pipeline_components(settings, alpaca_client)
+
+    # Phase 6: Orchestrator
+    orchestrator = initialize_orchestrator(
+        settings,
+        collector_manager,
+        analyzer_manager,
+        components,
+    )
+
+    # Start system
+    logger.info("=" * 60)
+    logger.info("🚀 All components initialized successfully")
+    logger.info("Starting TradingOrchestrator...")
+    logger.info("=" * 60)
+
+    try:
+        await orchestrator.start()
+        logger.info("✓ TradingOrchestrator started")
+        logger.info("\nListening for signals... (Press Ctrl+C to stop)")
+
+        # Keep running until interrupted
+        while orchestrator.is_running:
+            await asyncio.sleep(1)
+
+    except KeyboardInterrupt:
+        logger.info("\n⚠️  Shutdown requested...")
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise
+
+    finally:
+        # Graceful shutdown
+        logger.info("Shutting down gracefully...")
+
+        # Stop orchestrator (processes remaining messages)
+        await orchestrator.stop()
+        logger.info("✓ Orchestrator stopped")
+
+        # Disconnect infrastructure
+        await alpaca_client.disconnect()
+        logger.info("✓ Alpaca disconnected")
+
+        # Final notification
+        try:
+            await telegram.send_alert("🛑 System shutdown complete")
+            logger.info("✓ Shutdown notification sent")
+        except Exception:
+            pass  # Ignore telegram errors during shutdown
+
+        logger.info("=" * 60)
+        logger.info("✓ Shutdown complete")
+        logger.info("=" * 60)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

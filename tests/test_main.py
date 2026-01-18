@@ -205,3 +205,58 @@ def test_initialize_orchestrator_success():
 
         assert orchestrator is not None
         mock_orch.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_main_full_startup():
+    """Test full main() startup sequence."""
+    from main import main
+
+    with patch("main.load_and_validate_config") as mock_config, \
+         patch("main.print_startup_banner"), \
+         patch("main.initialize_infrastructure") as mock_infra, \
+         patch("main.initialize_analyzers") as mock_analyzers, \
+         patch("main.initialize_collectors") as mock_collectors, \
+         patch("main.initialize_pipeline_components") as mock_pipeline, \
+         patch("main.initialize_orchestrator") as mock_orchestrator:
+
+        # Setup mocks
+        mock_settings = MagicMock()
+        mock_config.return_value = mock_settings
+
+        mock_alpaca = MagicMock()
+        mock_alpaca.disconnect = AsyncMock()
+        mock_telegram = MagicMock()
+        mock_telegram.send_alert = AsyncMock()
+        mock_infra.return_value = (mock_alpaca, mock_telegram)
+
+        mock_analyzer_mgr = MagicMock()
+        mock_analyzers.return_value = mock_analyzer_mgr
+
+        mock_collector_mgr = MagicMock()
+        mock_collectors.return_value = mock_collector_mgr
+
+        mock_components = {"scorer": MagicMock(), "validator": MagicMock(),
+                          "gate": MagicMock(), "risk_manager": MagicMock(),
+                          "journal": MagicMock(), "executor": MagicMock()}
+        mock_pipeline.return_value = mock_components
+
+        mock_orch = MagicMock()
+        mock_orch.start = AsyncMock()
+        mock_orch.stop = AsyncMock()
+        mock_orchestrator.return_value = mock_orch
+
+        # Mock KeyboardInterrupt to exit gracefully
+        mock_orch.start.side_effect = KeyboardInterrupt()
+
+        await main()
+
+        # Verify all phases called
+        mock_config.assert_called_once()
+        mock_infra.assert_called_once()
+        mock_analyzers.assert_called_once()
+        mock_collectors.assert_called_once()
+        mock_pipeline.assert_called_once()
+        mock_orchestrator.assert_called_once()
+        mock_orch.start.assert_called_once()
+        mock_orch.stop.assert_called_once()
