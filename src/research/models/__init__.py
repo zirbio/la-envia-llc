@@ -8,6 +8,11 @@ from src.research.models.trading_idea import (
     RiskReward,
     TradingIdea,
 )
+from src.research.models.daily_brief import (
+    MarketRegime,
+    WatchlistItem,
+    DailyBrief,
+)
 
 __all__ = [
     "Direction",
@@ -16,4 +21,7 @@ __all__ = [
     "TechnicalLevels",
     "RiskReward",
     "TradingIdea",
+    "MarketRegime",
+    "WatchlistItem",
+    "DailyBrief",
 ]
