@@ -13,6 +13,7 @@ class AlertType(Enum):
     EXIT_EXECUTED = "exit_executed"
     CIRCUIT_BREAKER = "circuit_breaker"
     DAILY_SUMMARY = "daily_summary"
+    SYSTEM = "system"
 
 
 @dataclass

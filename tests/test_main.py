@@ -1,7 +1,7 @@
 """Tests for main.py helper functions."""
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 import pytest
 
 
@@ -82,3 +82,33 @@ def test_load_and_validate_config_missing_yaml():
         mock_path.return_value.exists.return_value = False
         with pytest.raises(SystemExit):
             load_and_validate_config()
+
+
+@pytest.mark.asyncio
+async def test_initialize_infrastructure_success():
+    """Test successful infrastructure initialization."""
+    from main import initialize_infrastructure
+    from src.config.settings import Settings
+
+    settings = Settings.from_yaml(Path("config/settings.yaml"))
+
+    with patch("main.AlpacaClient") as mock_alpaca:
+        with patch("main.TelegramNotifier") as mock_telegram:
+            with patch("main.AlertFormatter"):
+                # Mock successful connection
+                mock_alpaca_instance = mock_alpaca.return_value
+                mock_alpaca_instance.connect = AsyncMock()
+                mock_alpaca_instance.get_account = AsyncMock(
+                    return_value={"cash": "100000.00"}
+                )
+
+                mock_telegram_instance = mock_telegram.return_value
+                mock_telegram_instance.start = AsyncMock()
+                mock_telegram_instance.send_alert = AsyncMock()
+
+                alpaca, telegram = await initialize_infrastructure(settings)
+
+                assert alpaca is not None
+                assert telegram is not None
+                mock_alpaca_instance.connect.assert_called_once()
+                mock_telegram_instance.start.assert_called_once()

@@ -14,6 +14,8 @@ from src.collectors.reddit_collector import RedditCollector
 from src.collectors.stocktwits_collector import StocktwitsCollector
 from src.collectors.collector_manager import CollectorManager
 from src.execution.alpaca_client import AlpacaClient
+from src.notifications import TelegramNotifier, AlertFormatter
+from src.notifications.models import Alert, AlertType
 
 
 # Configure logging
@@ -104,6 +106,57 @@ def load_and_validate_config() -> Settings:
     create_data_dirs()
 
     return settings
+
+
+async def initialize_infrastructure(settings: Settings) -> tuple[AlpacaClient, TelegramNotifier]:
+    """Initialize core infrastructure (Alpaca + Telegram).
+
+    Args:
+        settings: Loaded settings object.
+
+    Returns:
+        Tuple of (AlpacaClient, TelegramNotifier).
+
+    Raises:
+        SystemExit: If connection fails.
+    """
+    # Initialize Alpaca
+    try:
+        alpaca_client = AlpacaClient(
+            api_key=settings.alpaca.api_key,
+            secret_key=settings.alpaca.secret_key,
+            paper=settings.alpaca.paper,
+        )
+        await alpaca_client.connect()
+
+        account = await alpaca_client.get_account()
+        cash = float(account["cash"])
+        logger.info(f"✓ Alpaca connected (Paper mode: {settings.alpaca.paper}, Cash: ${cash:,.2f})")
+
+    except Exception as e:
+        logger.error(f"Failed to connect to Alpaca: {e}")
+        logger.error("Check ALPACA_API_KEY and ALPACA_SECRET_KEY in .env")
+        sys.exit(1)
+
+    # Initialize Telegram
+    try:
+        formatter = AlertFormatter()
+        telegram = TelegramNotifier(settings=settings.notifications, formatter=formatter)
+        await telegram.start()
+        await telegram.send_alert(
+            Alert(
+                alert_type=AlertType.SYSTEM,
+                message="🚀 System starting up..."
+            )
+        )
+        logger.info("✓ Telegram connected (sent startup message)")
+
+    except Exception as e:
+        logger.error(f"Failed to connect to Telegram: {e}")
+        logger.error("Check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env")
+        sys.exit(1)
+
+    return alpaca_client, telegram
 
 
 async def main():
