@@ -222,17 +222,17 @@ async def initialize_claude_analyzer(settings: Settings) -> ClaudeAnalyzer:
     return claude_analyzer
 
 
-def initialize_grok_collector(settings: Settings) -> GrokCollector:
-    """Initialize Grok collector for X/Twitter data.
+async def initialize_grok_collector(settings: Settings) -> GrokCollector:
+    """Initialize and connect Grok collector for X/Twitter data.
 
     Args:
         settings: Loaded settings object.
 
     Returns:
-        GrokCollector instance.
+        Connected GrokCollector instance.
 
     Raises:
-        SystemExit: If initialization fails.
+        SystemExit: If initialization or connection fails.
     """
     try:
         grok_settings = settings.collectors.grok
@@ -242,7 +242,8 @@ def initialize_grok_collector(settings: Settings) -> GrokCollector:
             refresh_interval=grok_settings.refresh_interval_seconds,
             max_results_per_query=grok_settings.max_results_per_query,
         )
-        logger.info("✓ GrokCollector initialized")
+        await grok.connect()
+        logger.info("✓ GrokCollector initialized and connected")
         return grok
 
     except Exception as e:
@@ -427,7 +428,7 @@ async def main():
     claude_analyzer = await initialize_claude_analyzer(settings)
 
     # Phase 4: Grok Collector (replaces old collectors)
-    grok_collector = initialize_grok_collector(settings)
+    grok_collector = await initialize_grok_collector(settings)
 
     # Phase 5: Pipeline Components (including dynamic credibility)
     components = initialize_pipeline_components(settings, alpaca_client)

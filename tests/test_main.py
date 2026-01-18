@@ -13,6 +13,7 @@ def test_validate_env_vars_success():
         "ALPACA_API_KEY": "test_key",
         "ALPACA_SECRET_KEY": "test_secret",
         "ANTHROPIC_API_KEY": "test_anthropic",
+        "XAI_API_KEY": "test_xai",
     }):
         # Should not raise
         validate_env_vars()
@@ -25,6 +26,7 @@ def test_validate_env_vars_missing_alpaca_key():
     with patch.dict(os.environ, {
         "ALPACA_SECRET_KEY": "test_secret",
         "ANTHROPIC_API_KEY": "test_anthropic",
+        "XAI_API_KEY": "test_xai",
     }, clear=True):
         with pytest.raises(SystemExit):
             validate_env_vars()
@@ -54,6 +56,7 @@ def test_load_and_validate_config_success(tmp_path):
         "ALPACA_API_KEY=test\n"
         "ALPACA_SECRET_KEY=test\n"
         "ANTHROPIC_API_KEY=test\n"
+        "XAI_API_KEY=test\n"
     )
 
     # Create temporary settings.yaml
@@ -64,6 +67,7 @@ def test_load_and_validate_config_success(tmp_path):
         "ALPACA_API_KEY": "test",
         "ALPACA_SECRET_KEY": "test",
         "ANTHROPIC_API_KEY": "test",
+        "XAI_API_KEY": "test",
     }):
         with patch("main.load_dotenv"):
             with patch("main.create_data_dirs"):
@@ -115,46 +119,43 @@ async def test_initialize_infrastructure_success():
 
 
 @pytest.mark.asyncio
-async def test_initialize_analyzers_success():
-    """Test successful analyzer initialization."""
-    from main import initialize_analyzers
+async def test_initialize_claude_analyzer_success():
+    """Test successful Claude analyzer initialization."""
+    from main import initialize_claude_analyzer
     from src.config.settings import Settings
 
     settings = Settings.from_yaml(Path("config/settings.yaml"))
 
-    with patch("main.SentimentAnalyzer") as mock_sent:
-        with patch("main.ClaudeAnalyzer") as mock_claude:
-            with patch("main.AnalyzerManager") as mock_manager:
-                with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test_key"}):
-                    # Mock successful init
-                    mock_sent_instance = mock_sent.return_value
-                    mock_claude_instance = mock_claude.return_value
-                    mock_claude_instance.analyze.return_value = None
+    with patch("main.ClaudeAnalyzer") as mock_claude:
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test_key"}):
+            # Mock successful init
+            mock_claude_instance = mock_claude.return_value
+            mock_claude_instance.analyze.return_value = None
 
-                    analyzer_manager = await initialize_analyzers(settings)
+            claude_analyzer = await initialize_claude_analyzer(settings)
 
-                    assert analyzer_manager is not None
-                    mock_claude_instance.analyze.assert_called_once()
+            assert claude_analyzer is not None
+            mock_claude_instance.analyze.assert_called_once()
 
 
-def test_initialize_collectors_success():
-    """Test successful collector initialization."""
-    from main import initialize_collectors
+@pytest.mark.asyncio
+async def test_initialize_grok_collector_success():
+    """Test successful Grok collector initialization."""
+    from main import initialize_grok_collector
     from src.config.settings import Settings
-    from src.execution.alpaca_client import AlpacaClient
 
     settings = Settings.from_yaml(Path("config/settings.yaml"))
-    mock_alpaca = MagicMock(spec=AlpacaClient)
 
-    with patch("main.StocktwitsCollector") as mock_st:
-        with patch("main.RedditCollector") as mock_reddit:
-            with patch("main.CollectorManager") as mock_manager:
-                with patch.dict(os.environ, {}, clear=True):  # No Reddit creds
-                    collector_manager = initialize_collectors(settings, mock_alpaca)
+    with patch("main.GrokCollector") as mock_grok:
+        with patch.dict(os.environ, {"XAI_API_KEY": "test_xai_key"}):
+            # Mock successful init and connect
+            mock_grok_instance = mock_grok.return_value
+            mock_grok_instance.connect = AsyncMock()
 
-                    assert collector_manager is not None
-                    # Should create Stocktwits (no auth needed)
-                    mock_st.assert_called_once()
+            grok_collector = await initialize_grok_collector(settings)
+
+            assert grok_collector is not None
+            mock_grok_instance.connect.assert_called_once()
 
 
 def test_initialize_pipeline_components_success():
@@ -174,6 +175,9 @@ def test_initialize_pipeline_components_success():
     assert "risk_manager" in components
     assert "journal" in components
     assert "executor" in components
+    assert "profile_store" in components
+    assert "credibility_manager" in components
+    assert "outcome_tracker" in components
 
 
 def test_initialize_orchestrator_success():
@@ -184,8 +188,8 @@ def test_initialize_orchestrator_success():
     settings = Settings.from_yaml(Path("config/settings.yaml"))
 
     # Create mocks for all dependencies
-    mock_collector_manager = MagicMock()
-    mock_analyzer_manager = MagicMock()
+    mock_grok_collector = MagicMock()
+    mock_claude_analyzer = MagicMock()
     mock_components = {
         "scorer": MagicMock(),
         "validator": MagicMock(),
@@ -193,13 +197,15 @@ def test_initialize_orchestrator_success():
         "risk_manager": MagicMock(),
         "journal": MagicMock(),
         "executor": MagicMock(),
+        "credibility_manager": MagicMock(),
+        "outcome_tracker": MagicMock(),
     }
 
     with patch("main.TradingOrchestrator") as mock_orch:
         orchestrator = initialize_orchestrator(
             settings,
-            mock_collector_manager,
-            mock_analyzer_manager,
+            mock_grok_collector,
+            mock_claude_analyzer,
             mock_components,
         )
 
@@ -215,8 +221,8 @@ async def test_main_full_startup():
     with patch("main.load_and_validate_config") as mock_config, \
          patch("main.print_startup_banner"), \
          patch("main.initialize_infrastructure") as mock_infra, \
-         patch("main.initialize_analyzers") as mock_analyzers, \
-         patch("main.initialize_collectors") as mock_collectors, \
+         patch("main.initialize_claude_analyzer") as mock_claude, \
+         patch("main.initialize_grok_collector") as mock_grok, \
          patch("main.initialize_pipeline_components") as mock_pipeline, \
          patch("main.initialize_orchestrator") as mock_orchestrator:
 
@@ -230,15 +236,23 @@ async def test_main_full_startup():
         mock_telegram.send_alert = AsyncMock()
         mock_infra.return_value = (mock_alpaca, mock_telegram)
 
-        mock_analyzer_mgr = MagicMock()
-        mock_analyzers.return_value = mock_analyzer_mgr
+        mock_claude_analyzer = MagicMock()
+        mock_claude.return_value = mock_claude_analyzer
 
-        mock_collector_mgr = MagicMock()
-        mock_collectors.return_value = mock_collector_mgr
+        mock_grok_collector = MagicMock()
+        mock_grok_collector.disconnect = AsyncMock()
+        mock_grok.return_value = mock_grok_collector
 
-        mock_components = {"scorer": MagicMock(), "validator": MagicMock(),
-                          "gate": MagicMock(), "risk_manager": MagicMock(),
-                          "journal": MagicMock(), "executor": MagicMock()}
+        mock_components = {
+            "scorer": MagicMock(),
+            "validator": MagicMock(),
+            "gate": MagicMock(),
+            "risk_manager": MagicMock(),
+            "journal": MagicMock(),
+            "executor": MagicMock(),
+            "credibility_manager": MagicMock(),
+            "outcome_tracker": MagicMock(),
+        }
         mock_pipeline.return_value = mock_components
 
         mock_orch = MagicMock()
@@ -254,8 +268,8 @@ async def test_main_full_startup():
         # Verify all phases called
         mock_config.assert_called_once()
         mock_infra.assert_called_once()
-        mock_analyzers.assert_called_once()
-        mock_collectors.assert_called_once()
+        mock_claude.assert_called_once()
+        mock_grok.assert_called_once()
         mock_pipeline.assert_called_once()
         mock_orchestrator.assert_called_once()
         mock_orch.start.assert_called_once()

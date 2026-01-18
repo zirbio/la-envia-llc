@@ -18,14 +18,15 @@ from scoring.models import Direction, ScoreComponents, ScoreTier, TradeRecommend
 from validators.models import TechnicalIndicators, TechnicalValidation, ValidatedSignal, ValidationStatus
 
 
-def make_social_message(content: str = "Test message") -> SocialMessage:
+def make_social_message(content: str = "Test message $AAPL", sentiment: str | None = None) -> SocialMessage:
     """Create a test social message."""
     return SocialMessage(
-        source=SourceType.TWITTER,
+        source=SourceType.GROK,
         source_id="test_123",
         content=content,
         author="test_user",
         timestamp=datetime.now(),
+        sentiment=sentiment,
     )
 
 
@@ -115,46 +116,41 @@ def make_gate_status(is_open: bool = True, factor: float = 1.0) -> GateStatus:
     )
 
 
-class TestTradingOrchestratorCore:
-    """Tests for core orchestrator functionality."""
+def make_mock_components() -> dict:
+    """Create mock components for orchestrator."""
+    grok_collector = MagicMock()
+    grok_collector.stream = MagicMock(return_value=AsyncIteratorMock([]))
 
-    @pytest.fixture
-    def settings(self) -> OrchestratorSettings:
-        return OrchestratorSettings()
+    claude_analyzer = MagicMock()
+    claude_analyzer.analyze = MagicMock()
 
-    @pytest.fixture
-    def mock_components(self) -> dict:
-        return {
-            "collector_manager": MagicMock(),
-            "analyzer_manager": AsyncMock(),
-            "technical_validator": AsyncMock(),
-            "signal_scorer": MagicMock(),
-            "risk_manager": MagicMock(),
-            "market_gate": AsyncMock(),
-            "trade_executor": AsyncMock(),
-        }
+    return {
+        "grok_collector": grok_collector,
+        "claude_analyzer": claude_analyzer,
+        "technical_validator": AsyncMock(),
+        "signal_scorer": MagicMock(),
+        "risk_manager": MagicMock(),
+        "market_gate": AsyncMock(),
+        "trade_executor": AsyncMock(),
+        "credibility_manager": MagicMock(),
+        "outcome_tracker": MagicMock(),
+    }
 
-    @pytest.fixture
-    def orchestrator(self, mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
-        return TradingOrchestrator(
-            collector_manager=mock_components["collector_manager"],
-            analyzer_manager=mock_components["analyzer_manager"],
-            technical_validator=mock_components["technical_validator"],
-            signal_scorer=mock_components["signal_scorer"],
-            risk_manager=mock_components["risk_manager"],
-            market_gate=mock_components["market_gate"],
-            trade_executor=mock_components["trade_executor"],
-            settings=settings,
-        )
 
-    def test_initial_state_is_stopped(self, orchestrator: TradingOrchestrator) -> None:
-        assert orchestrator.state == OrchestratorState.STOPPED
-
-    def test_is_running_false_when_stopped(self, orchestrator: TradingOrchestrator) -> None:
-        assert orchestrator.is_running is False
-
-    def test_buffer_initially_empty(self, orchestrator: TradingOrchestrator) -> None:
-        assert len(orchestrator._message_buffer) == 0
+def make_orchestrator(mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
+    """Create a TradingOrchestrator with the new API."""
+    return TradingOrchestrator(
+        grok_collector=mock_components["grok_collector"],
+        claude_analyzer=mock_components["claude_analyzer"],
+        technical_validator=mock_components["technical_validator"],
+        signal_scorer=mock_components["signal_scorer"],
+        risk_manager=mock_components["risk_manager"],
+        market_gate=mock_components["market_gate"],
+        trade_executor=mock_components["trade_executor"],
+        credibility_manager=mock_components["credibility_manager"],
+        outcome_tracker=mock_components["outcome_tracker"],
+        settings=settings,
+    )
 
 
 class AsyncIteratorMock:
@@ -175,6 +171,31 @@ class AsyncIteratorMock:
         return item
 
 
+class TestTradingOrchestratorCore:
+    """Tests for core orchestrator functionality."""
+
+    @pytest.fixture
+    def settings(self) -> OrchestratorSettings:
+        return OrchestratorSettings()
+
+    @pytest.fixture
+    def mock_components(self) -> dict:
+        return make_mock_components()
+
+    @pytest.fixture
+    def orchestrator(self, mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
+        return make_orchestrator(mock_components, settings)
+
+    def test_initial_state_is_stopped(self, orchestrator: TradingOrchestrator) -> None:
+        assert orchestrator.state == OrchestratorState.STOPPED
+
+    def test_is_running_false_when_stopped(self, orchestrator: TradingOrchestrator) -> None:
+        assert orchestrator.is_running is False
+
+    def test_buffer_initially_empty(self, orchestrator: TradingOrchestrator) -> None:
+        assert len(orchestrator._message_buffer) == 0
+
+
 class TestTradingOrchestratorStartStop:
     """Tests for start/stop functionality."""
 
@@ -184,34 +205,14 @@ class TestTradingOrchestratorStartStop:
 
     @pytest.fixture
     def mock_components(self) -> dict:
-        collector = MagicMock()
-        collector.connect_all = AsyncMock()
-        collector.disconnect_all = AsyncMock()
-        collector.stream_all = MagicMock(return_value=AsyncIteratorMock([]))
-        collector.add_callback = MagicMock()
-
-        return {
-            "collector_manager": collector,
-            "analyzer_manager": AsyncMock(),
-            "technical_validator": AsyncMock(),
-            "signal_scorer": MagicMock(),
-            "risk_manager": MagicMock(),
-            "market_gate": AsyncMock(),
-            "trade_executor": AsyncMock(),
-        }
+        components = make_mock_components()
+        # Override stream to return empty iterator
+        components["grok_collector"].stream = MagicMock(return_value=AsyncIteratorMock([]))
+        return components
 
     @pytest.fixture
     def orchestrator(self, mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
-        return TradingOrchestrator(
-            collector_manager=mock_components["collector_manager"],
-            analyzer_manager=mock_components["analyzer_manager"],
-            technical_validator=mock_components["technical_validator"],
-            signal_scorer=mock_components["signal_scorer"],
-            risk_manager=mock_components["risk_manager"],
-            market_gate=mock_components["market_gate"],
-            trade_executor=mock_components["trade_executor"],
-            settings=settings,
-        )
+        return make_orchestrator(mock_components, settings)
 
     @pytest.mark.asyncio
     async def test_start_changes_state_to_running(
@@ -222,28 +223,12 @@ class TestTradingOrchestratorStartStop:
         await orchestrator.stop()
 
     @pytest.mark.asyncio
-    async def test_start_connects_collectors(
-        self, orchestrator: TradingOrchestrator, mock_components: dict
-    ) -> None:
-        await orchestrator.start()
-        mock_components["collector_manager"].connect_all.assert_called_once()
-        await orchestrator.stop()
-
-    @pytest.mark.asyncio
     async def test_stop_changes_state_to_stopped(
         self, orchestrator: TradingOrchestrator, mock_components: dict
     ) -> None:
         await orchestrator.start()
         await orchestrator.stop()
         assert orchestrator.state == OrchestratorState.STOPPED
-
-    @pytest.mark.asyncio
-    async def test_stop_disconnects_collectors(
-        self, orchestrator: TradingOrchestrator, mock_components: dict
-    ) -> None:
-        await orchestrator.start()
-        await orchestrator.stop()
-        mock_components["collector_manager"].disconnect_all.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_raises_if_already_running(
@@ -264,16 +249,7 @@ class TestHighSignalDetection:
 
     @pytest.fixture
     def orchestrator(self, settings: OrchestratorSettings) -> TradingOrchestrator:
-        return TradingOrchestrator(
-            collector_manager=MagicMock(),
-            analyzer_manager=AsyncMock(),
-            technical_validator=AsyncMock(),
-            signal_scorer=MagicMock(),
-            risk_manager=MagicMock(),
-            market_gate=AsyncMock(),
-            trade_executor=AsyncMock(),
-            settings=settings,
-        )
+        return make_orchestrator(make_mock_components(), settings)
 
     def test_is_high_signal_true_for_high_confidence(
         self, orchestrator: TradingOrchestrator
@@ -308,29 +284,21 @@ class TestMessageRouting:
         return OrchestratorSettings(immediate_threshold=0.85)
 
     @pytest.fixture
-    def mock_analyzer(self) -> AsyncMock:
-        return AsyncMock()
+    def mock_components(self) -> dict:
+        return make_mock_components()
 
     @pytest.fixture
-    def orchestrator(self, settings: OrchestratorSettings, mock_analyzer: AsyncMock) -> TradingOrchestrator:
-        return TradingOrchestrator(
-            collector_manager=MagicMock(),
-            analyzer_manager=mock_analyzer,
-            technical_validator=AsyncMock(),
-            signal_scorer=MagicMock(),
-            risk_manager=MagicMock(),
-            market_gate=AsyncMock(),
-            trade_executor=AsyncMock(),
-            settings=settings,
-        )
+    def orchestrator(self, settings: OrchestratorSettings, mock_components: dict) -> TradingOrchestrator:
+        return make_orchestrator(mock_components, settings)
 
     @pytest.mark.asyncio
     async def test_on_message_routes_high_signal_to_immediate(
-        self, orchestrator: TradingOrchestrator, mock_analyzer: AsyncMock
+        self, orchestrator: TradingOrchestrator, mock_components: dict
     ) -> None:
         """High-signal messages are processed immediately."""
+        # Mock _analyze_message to return a high-signal message
         high_signal_msg = make_analyzed_message(confidence=0.9, label="bullish")
-        mock_analyzer.analyze.return_value = high_signal_msg
+        orchestrator._analyze_message = MagicMock(return_value=high_signal_msg)
 
         # Mock the immediate processing
         orchestrator._process_immediate = AsyncMock(return_value=ProcessResult(status="executed"))
@@ -342,11 +310,11 @@ class TestMessageRouting:
 
     @pytest.mark.asyncio
     async def test_on_message_routes_low_signal_to_buffer(
-        self, orchestrator: TradingOrchestrator, mock_analyzer: AsyncMock
+        self, orchestrator: TradingOrchestrator, mock_components: dict
     ) -> None:
         """Low-signal messages are added to buffer."""
         low_signal_msg = make_analyzed_message(confidence=0.5, label="bullish")
-        mock_analyzer.analyze.return_value = low_signal_msg
+        orchestrator._analyze_message = MagicMock(return_value=low_signal_msg)
 
         result = await orchestrator._on_message(make_social_message())
 
@@ -355,10 +323,10 @@ class TestMessageRouting:
 
     @pytest.mark.asyncio
     async def test_on_message_handles_analyzer_error(
-        self, orchestrator: TradingOrchestrator, mock_analyzer: AsyncMock
+        self, orchestrator: TradingOrchestrator, mock_components: dict
     ) -> None:
         """Analyzer errors are handled gracefully."""
-        mock_analyzer.analyze.side_effect = Exception("Analysis failed")
+        orchestrator._analyze_message = MagicMock(side_effect=Exception("Analysis failed"))
 
         result = await orchestrator._on_message(make_social_message())
 
@@ -375,28 +343,11 @@ class TestImmediateProcessing:
 
     @pytest.fixture
     def mock_components(self) -> dict:
-        return {
-            "collector_manager": MagicMock(),
-            "analyzer_manager": AsyncMock(),
-            "technical_validator": AsyncMock(),
-            "signal_scorer": MagicMock(),
-            "risk_manager": MagicMock(),
-            "market_gate": AsyncMock(),
-            "trade_executor": AsyncMock(),
-        }
+        return make_mock_components()
 
     @pytest.fixture
     def orchestrator(self, mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
-        return TradingOrchestrator(
-            collector_manager=mock_components["collector_manager"],
-            analyzer_manager=mock_components["analyzer_manager"],
-            technical_validator=mock_components["technical_validator"],
-            signal_scorer=mock_components["signal_scorer"],
-            risk_manager=mock_components["risk_manager"],
-            market_gate=mock_components["market_gate"],
-            trade_executor=mock_components["trade_executor"],
-            settings=settings,
-        )
+        return make_orchestrator(mock_components, settings)
 
     @pytest.mark.asyncio
     async def test_process_immediate_full_flow(
@@ -478,16 +429,7 @@ class TestBatchProcessing:
 
     @pytest.fixture
     def orchestrator(self, settings: OrchestratorSettings) -> TradingOrchestrator:
-        return TradingOrchestrator(
-            collector_manager=MagicMock(),
-            analyzer_manager=AsyncMock(),
-            technical_validator=AsyncMock(),
-            signal_scorer=MagicMock(),
-            risk_manager=MagicMock(),
-            market_gate=AsyncMock(),
-            trade_executor=AsyncMock(),
-            settings=settings,
-        )
+        return make_orchestrator(make_mock_components(), settings)
 
     def test_aggregate_sentiment_bullish_consensus(
         self, orchestrator: TradingOrchestrator
@@ -551,28 +493,11 @@ class TestGracefulDegradation:
 
     @pytest.fixture
     def mock_components(self) -> dict:
-        return {
-            "collector_manager": MagicMock(),
-            "analyzer_manager": AsyncMock(),
-            "technical_validator": AsyncMock(),
-            "signal_scorer": MagicMock(),
-            "risk_manager": MagicMock(),
-            "market_gate": AsyncMock(),
-            "trade_executor": AsyncMock(),
-        }
+        return make_mock_components()
 
     @pytest.fixture
     def orchestrator(self, mock_components: dict, settings: OrchestratorSettings) -> TradingOrchestrator:
-        return TradingOrchestrator(
-            collector_manager=mock_components["collector_manager"],
-            analyzer_manager=mock_components["analyzer_manager"],
-            technical_validator=mock_components["technical_validator"],
-            signal_scorer=mock_components["signal_scorer"],
-            risk_manager=mock_components["risk_manager"],
-            market_gate=mock_components["market_gate"],
-            trade_executor=mock_components["trade_executor"],
-            settings=settings,
-        )
+        return make_orchestrator(mock_components, settings)
 
     @pytest.mark.asyncio
     async def test_validator_error_continues_when_enabled(
@@ -606,21 +531,11 @@ class TestGracefulDegradation:
         mock_components["trade_executor"].execute.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_validator_error_stops_when_disabled(
-        self, mock_components: dict
-    ) -> None:
+    async def test_validator_error_stops_when_disabled(self) -> None:
         """Validator error stops processing when continue_without_validator=False."""
         settings = OrchestratorSettings(continue_without_validator=False)
-        orchestrator = TradingOrchestrator(
-            collector_manager=mock_components["collector_manager"],
-            analyzer_manager=mock_components["analyzer_manager"],
-            technical_validator=mock_components["technical_validator"],
-            signal_scorer=mock_components["signal_scorer"],
-            risk_manager=mock_components["risk_manager"],
-            market_gate=mock_components["market_gate"],
-            trade_executor=mock_components["trade_executor"],
-            settings=settings,
-        )
+        mock_components = make_mock_components()
+        orchestrator = make_orchestrator(mock_components, settings)
 
         mock_components["technical_validator"].validate.side_effect = Exception("Validator down")
 
@@ -630,21 +545,11 @@ class TestGracefulDegradation:
         assert "Validation error" in result.error
 
     @pytest.mark.asyncio
-    async def test_gate_error_returns_error_when_fail_safe_disabled(
-        self, mock_components: dict
-    ) -> None:
+    async def test_gate_error_returns_error_when_fail_safe_disabled(self) -> None:
         """Gate error returns error when gate_fail_safe_closed=False."""
         settings = OrchestratorSettings(gate_fail_safe_closed=False)
-        orchestrator = TradingOrchestrator(
-            collector_manager=mock_components["collector_manager"],
-            analyzer_manager=mock_components["analyzer_manager"],
-            technical_validator=mock_components["technical_validator"],
-            signal_scorer=mock_components["signal_scorer"],
-            risk_manager=mock_components["risk_manager"],
-            market_gate=mock_components["market_gate"],
-            trade_executor=mock_components["trade_executor"],
-            settings=settings,
-        )
+        mock_components = make_mock_components()
+        orchestrator = make_orchestrator(mock_components, settings)
 
         mock_components["technical_validator"].validate.return_value = make_validated_signal(True)
         mock_components["signal_scorer"].score.return_value = make_recommendation(ScoreTier.STRONG)

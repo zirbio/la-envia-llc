@@ -4,15 +4,18 @@ import asyncio
 import logging
 
 from analyzers.analyzed_message import AnalyzedMessage
-from analyzers.analyzer_manager import AnalyzerManager
-from collectors.collector_manager import CollectorManager
+from analyzers.claude_analyzer import ClaudeAnalyzer
+from analyzers.sentiment_result import SentimentLabel, SentimentResult
+from collectors.grok_collector import GrokCollector
 from execution.trade_executor import TradeExecutor
 from gate.market_gate import MarketGate
 from models.social_message import SocialMessage
 from orchestrator.models import AggregatedSentiment, OrchestratorState, ProcessResult
 from orchestrator.settings import OrchestratorSettings
 from risk.risk_manager import RiskManager
+from scoring.dynamic_credibility_manager import DynamicCredibilityManager
 from scoring.models import ScoreTier
+from scoring.signal_outcome_tracker import SignalOutcomeTracker
 from scoring.signal_scorer import SignalScorer
 from validators.models import TechnicalIndicators, TechnicalValidation, ValidatedSignal, ValidationStatus
 from validators.technical_validator import TechnicalValidator
@@ -31,22 +34,26 @@ class TradingOrchestrator:
 
     def __init__(
         self,
-        collector_manager: CollectorManager,
-        analyzer_manager: AnalyzerManager,
+        grok_collector: GrokCollector,
+        claude_analyzer: ClaudeAnalyzer,
         technical_validator: TechnicalValidator,
         signal_scorer: SignalScorer,
         risk_manager: RiskManager,
         market_gate: MarketGate,
         trade_executor: TradeExecutor,
+        credibility_manager: DynamicCredibilityManager,
+        outcome_tracker: SignalOutcomeTracker,
         settings: OrchestratorSettings,
     ):
-        self._collector_manager = collector_manager
-        self._analyzer = analyzer_manager
+        self._grok_collector = grok_collector
+        self._claude_analyzer = claude_analyzer
         self._validator = technical_validator
         self._scorer = signal_scorer
         self._risk_manager = risk_manager
         self._gate = market_gate
         self._executor = trade_executor
+        self._credibility_manager = credibility_manager
+        self._outcome_tracker = outcome_tracker
         self._settings = settings
 
         self._state = OrchestratorState.STOPPED
@@ -72,11 +79,8 @@ class TradingOrchestrator:
         self._state = OrchestratorState.RUNNING
         logger.info("Starting trading orchestrator")
 
-        # Connect collectors
-        await self._collector_manager.connect_all()
-
-        # Register message callback
-        self._collector_manager.add_callback(self._on_message_callback)
+        # GrokCollector should already be connected before orchestrator starts
+        # (connect() is called in main.py during initialization)
 
         # Start background tasks
         self._stream_task = asyncio.create_task(self._run_stream())
@@ -112,8 +116,7 @@ class TradingOrchestrator:
             logger.info(f"Processing {len(self._message_buffer)} buffered messages")
             await self._flush_buffer()
 
-        # Disconnect collectors
-        await self._collector_manager.disconnect_all()
+        # GrokCollector disconnect is handled in main.py during shutdown
 
         self._state = OrchestratorState.STOPPED
         logger.info("Trading orchestrator stopped")
@@ -121,7 +124,7 @@ class TradingOrchestrator:
     async def _run_stream(self) -> None:
         """Main stream loop."""
         try:
-            async for message in self._collector_manager.stream_all():
+            async for message in self._grok_collector.stream():
                 if self._state != OrchestratorState.RUNNING:
                     break
                 await self._on_message(message)
@@ -236,9 +239,43 @@ class TradingOrchestrator:
         )
         # TODO: Create synthetic analyzed message from aggregation and process
 
-    def _on_message_callback(self, message: SocialMessage) -> None:
-        """Sync callback wrapper for collector manager."""
-        asyncio.create_task(self._on_message(message))
+    def _analyze_message(self, message: SocialMessage) -> AnalyzedMessage:
+        """Analyze a social message using Claude.
+
+        Creates an AnalyzedMessage with sentiment derived from
+        the message's existing sentiment field (if available from Grok)
+        or by running Claude deep analysis.
+
+        Args:
+            message: Raw social message from collector.
+
+        Returns:
+            AnalyzedMessage with sentiment and optional deep analysis.
+        """
+        # Map message sentiment (from Grok/Stocktwits) to SentimentResult
+        if message.sentiment:
+            label = SentimentLabel(message.sentiment.lower())
+            sentiment = SentimentResult(
+                label=label,
+                score=0.8 if label == SentimentLabel.BULLISH else 0.2,
+                confidence=0.75,
+            )
+        else:
+            # No pre-existing sentiment, default to neutral
+            sentiment = SentimentResult(
+                label=SentimentLabel.NEUTRAL,
+                score=0.5,
+                confidence=0.5,
+            )
+
+        # Run Claude deep analysis for additional context
+        deep_analysis = self._claude_analyzer.analyze(message)
+
+        return AnalyzedMessage(
+            message=message,
+            sentiment=sentiment,
+            deep_analysis=deep_analysis,
+        )
 
     async def _on_message(self, message: SocialMessage) -> ProcessResult:
         """Process incoming message from collectors.
@@ -254,7 +291,7 @@ class TradingOrchestrator:
         """
         try:
             # Step 1: Analyze message
-            analyzed = await self._analyzer.analyze(message)
+            analyzed = self._analyze_message(message)
 
             # Step 2: Route based on signal strength
             if self._is_high_signal(analyzed):
