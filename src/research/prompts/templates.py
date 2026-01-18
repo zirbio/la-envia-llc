@@ -2,22 +2,24 @@
 
 """Prompt templates for Morning Research Agent."""
 
-SYSTEM_PROMPT = """You are a senior equity research analyst at a quantitative hedge fund.
-Your job: produce the Morning Brief before US market open.
+SYSTEM_PROMPT = """Eres un analista senior de equity research en un hedge fund cuantitativo.
+Tu trabajo: producir el Morning Brief antes de la apertura del mercado de EE.UU.
 
-PRINCIPLES:
-1. Every conclusion must cite evidence (data source + specific numbers)
-2. Distinguish FACT (data) from INFERENCE (your analysis)
-3. Think contrarian: what is the market missing or mispricing?
-4. Express conviction in probabilities, not certainties
-5. Focus on asymmetric risk/reward (2:1 minimum)
-6. If data is insufficient, say "INSUFFICIENT DATA" - never guess
+RESPONDE SIEMPRE EN ESPAÑOL.
 
-REJECTION CRITERIA (automatic NO):
-- No clear catalyst in next 24-48 hours
-- Risk/reward below 1.5:1
-- Conflicting signals without resolution
-- Low liquidity (< 500K avg volume)"""
+PRINCIPIOS:
+1. Cada conclusión debe citar evidencia (fuente de datos + números específicos)
+2. Distinguir HECHOS (datos) de INFERENCIAS (tu análisis)
+3. Piensa como contrarian: ¿qué está perdiendo o mal valorando el mercado?
+4. Expresa convicción en probabilidades, no certezas
+5. Enfócate en riesgo/recompensa asimétrico (mínimo 2:1)
+6. Si los datos son insuficientes, di "DATOS INSUFICIENTES" - nunca adivines
+
+CRITERIOS DE RECHAZO (NO automático):
+- Sin catalizador claro en las próximas 24-48 horas
+- Riesgo/recompensa por debajo de 1.5:1
+- Señales conflictivas sin resolución
+- Baja liquidez (< 500K volumen promedio)"""
 
 
 def build_context(data: dict) -> str:
@@ -34,88 +36,90 @@ def build_context(data: dict) -> str:
     earnings = data.get("earnings", [])
     economic = data.get("economic_events", [])
     sec = data.get("sec_filings", {"8k": [], "form4": []})
-    social = data.get("social_intelligence", "No social data available")
+    social = data.get("social_intelligence", "Sin datos sociales disponibles")
     news = data.get("news", [])
 
     # Format gappers table
     gappers_table = ""
     for g in gappers:
-        gappers_table += f"| {g.get('ticker', 'N/A')} | {g.get('gap_percent', 0):.1f}% | {g.get('volume', 0):,} | {g.get('catalyst', 'Unknown')} |\n"
+        gappers_table += f"| {g.get('ticker', 'N/A')} | {g.get('gap_percent', 0):.1f}% | {g.get('volume', 0):,} | {g.get('catalyst', 'Desconocido')} |\n"
     if not gappers_table:
-        gappers_table = "| No significant gappers found |\n"
+        gappers_table = "| No se encontraron gappers significativos |\n"
 
     return f"""<context>
 <market_snapshot>
-Date: {data.get('date', 'Unknown')} | Time: {data.get('time', 'Unknown')} ET
-ES Futures: {futures.get('es', 'N/A')} ({futures.get('es_change', 0):.1f}%)
-NQ Futures: {futures.get('nq', 'N/A')} ({futures.get('nq_change', 0):.1f}%)
+Fecha: {data.get('date', 'Desconocido')} | Hora: {data.get('time', 'Desconocido')} ET
+Futuros ES: {futures.get('es', 'N/A')} ({futures.get('es_change', 0):.1f}%)
+Futuros NQ: {futures.get('nq', 'N/A')} ({futures.get('nq_change', 0):.1f}%)
 VIX: {data.get('vix', 'N/A')}
 </market_snapshot>
 
 <premarket_gappers>
-| Ticker | Gap% | Volume | Catalyst |
-|--------|------|--------|----------|
+| Ticker | Gap% | Volumen | Catalizador |
+|--------|------|---------|-------------|
 {gappers_table}</premarket_gappers>
 
-<earnings_today>
-{', '.join(earnings) if earnings else 'No major earnings today'}
-</earnings_today>
+<earnings_hoy>
+{', '.join(earnings) if earnings else 'Sin earnings importantes hoy'}
+</earnings_hoy>
 
-<economic_calendar>
-{chr(10).join(economic) if economic else 'No major events scheduled'}
-</economic_calendar>
+<calendario_economico>
+{chr(10).join(economic) if economic else 'Sin eventos importantes programados'}
+</calendario_economico>
 
-<sec_filings_24h>
-8-K Material Events: {len(sec.get('8k', []))} filings
-Form 4 Insider Activity: {len(sec.get('form4', []))} filings
-</sec_filings_24h>
+<filings_sec_24h>
+8-K Eventos Materiales: {len(sec.get('8k', []))} filings
+Form 4 Actividad Insiders: {len(sec.get('form4', []))} filings
+</filings_sec_24h>
 
-<social_intelligence>
+<inteligencia_social>
 {social}
-</social_intelligence>
+</inteligencia_social>
 
-<overnight_news>
-{chr(10).join(news) if news else 'No significant overnight news'}
-</overnight_news>
+<noticias_overnight>
+{chr(10).join(news) if news else 'Sin noticias significativas overnight'}
+</noticias_overnight>
 </context>"""
 
 
-TASK_PROMPT = """Analyze ALL data above. Produce today's MORNING BRIEF.
+TASK_PROMPT = """Analiza TODOS los datos anteriores. Produce el MORNING BRIEF de hoy.
 
-REQUIRED SECTIONS:
+IMPORTANTE: Responde en ESPAÑOL.
 
-1. MARKET REGIME (3-4 sentences)
-   - Current market state (risk-on/off, trending/ranging)
-   - Key overnight developments
-   - What the VIX and futures are signaling
+SECCIONES REQUERIDAS:
 
-2. TOP IDEAS (max 5, ranked by conviction)
-   For EACH idea provide:
-   - Ticker, Direction (LONG/SHORT), Conviction (HIGH/MED/LOW)
-   - Catalyst: What's driving this TODAY? (specific event/data)
-   - Thesis: Why will price move in your direction?
-   - Technical: Key levels (support, resistance, entry zone)
-   - Risk/Reward: Entry, Stop, Target (with R:R ratio)
-   - Position Size: FULL (1x) / HALF (0.5x) / QUARTER (0.25x)
-   - Kill Switch: What would invalidate this idea?
+1. RÉGIMEN DE MERCADO (3-4 oraciones)
+   - Estado actual del mercado (risk-on/off, tendencia/rango)
+   - Desarrollos clave overnight
+   - Qué señalan el VIX y los futuros
+
+2. IDEAS PRINCIPALES (máx 5, ordenadas por convicción)
+   Para CADA idea proporciona:
+   - Ticker, Dirección (LONG/SHORT), Convicción (HIGH/MED/LOW)
+   - Catalizador: ¿Qué impulsa esto HOY? (evento/dato específico)
+   - Tesis: ¿Por qué se moverá el precio en tu dirección?
+   - Técnico: Niveles clave (soporte, resistencia, zona de entrada)
+   - Riesgo/Recompensa: Entrada, Stop, Objetivo (con ratio R:R)
+   - Tamaño de Posición: FULL (1x) / HALF (0.5x) / QUARTER (0.25x)
+   - Kill Switch: ¿Qué invalidaría esta idea?
 
 3. WATCHLIST (3-5 tickers)
-   - Setting up but not actionable today
-   - What trigger would make them tradeable?
+   - Configurándose pero no accionables hoy
+   - ¿Qué trigger los haría operables?
 
-4. RISKS & LANDMINES
-   - Events that could blow up positions
-   - Scheduled times to be careful
+4. RIESGOS Y MINAS
+   - Eventos que podrían destruir posiciones
+   - Horarios programados para tener cuidado
 
-5. KEY QUESTIONS
-   - What information would change your thesis today?
+5. PREGUNTAS CLAVE
+   - ¿Qué información cambiaría tu tesis hoy?
 
-Return ONLY valid JSON matching this schema:
+Devuelve SOLO JSON válido siguiendo este schema:
 {
   "market_regime": {
     "state": "risk-on|risk-off|neutral",
     "trend": "bullish|bearish|ranging",
-    "summary": "string"
+    "summary": "string en español"
   },
   "ideas": [
     {
@@ -123,8 +127,8 @@ Return ONLY valid JSON matching this schema:
       "ticker": "NVDA",
       "direction": "LONG",
       "conviction": "HIGH",
-      "catalyst": "string",
-      "thesis": "string",
+      "catalyst": "string en español",
+      "thesis": "string en español",
       "technical": {
         "support": 135.50,
         "resistance": 142.00,
@@ -137,12 +141,12 @@ Return ONLY valid JSON matching this schema:
         "ratio": "3.2:1"
       },
       "position_size": "FULL",
-      "kill_switch": "string"
+      "kill_switch": "string en español"
     }
   ],
   "watchlist": [
-    {"ticker": "MSFT", "setup": "string", "trigger": "string"}
+    {"ticker": "MSFT", "setup": "string en español", "trigger": "string en español"}
   ],
-  "risks": ["string"],
-  "key_questions": ["string"]
+  "risks": ["string en español"],
+  "key_questions": ["string en español"]
 }"""

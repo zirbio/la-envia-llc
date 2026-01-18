@@ -14,11 +14,11 @@ class TestSystemPrompt:
         assert len(SYSTEM_PROMPT) > 100
 
     def test_system_prompt_contains_principles(self):
-        assert "PRINCIPLES" in SYSTEM_PROMPT
-        assert "evidence" in SYSTEM_PROMPT.lower()
+        assert "PRINCIPIOS" in SYSTEM_PROMPT
+        assert "evidencia" in SYSTEM_PROMPT.lower()
 
     def test_system_prompt_contains_rejection_criteria(self):
-        assert "REJECTION" in SYSTEM_PROMPT
+        assert "RECHAZO" in SYSTEM_PROMPT
 
 
 class TestBuildContext:
@@ -58,10 +58,10 @@ class TestTaskPrompt:
         assert len(TASK_PROMPT) > 100
 
     def test_task_prompt_contains_sections(self):
-        assert "MARKET REGIME" in TASK_PROMPT
-        assert "TOP IDEAS" in TASK_PROMPT
+        assert "RÉGIMEN DE MERCADO" in TASK_PROMPT
+        assert "IDEAS PRINCIPALES" in TASK_PROMPT
         assert "WATCHLIST" in TASK_PROMPT
-        assert "RISKS" in TASK_PROMPT
+        assert "RIESGOS" in TASK_PROMPT
 
     def test_task_prompt_contains_json_schema(self):
         assert "output_format" in TASK_PROMPT.lower() or "json" in TASK_PROMPT.lower()

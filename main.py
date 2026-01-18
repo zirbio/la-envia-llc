@@ -202,14 +202,14 @@ async def initialize_claude_analyzer(settings: Settings) -> ClaudeAnalyzer:
             max_tokens=settings.analyzers.claude.max_tokens,
             rate_limit_per_minute=settings.analyzers.claude.rate_limit_per_minute,
         )
-        # Test connection with simple message
+        # Test connection with realistic trading message
         test_msg = SocialMessage(
             source="twitter",
             source_id="test_001",
-            author="test_user",
-            content="Test message for API verification",
+            author="unusual_whales",
+            content="$AAPL breaking out above resistance with massive volume spike. Bullish setup.",
             timestamp=datetime.now(),
-            url="https://test.com"
+            url="https://x.com/unusual_whales/status/test_001"
         )
         _ = claude_analyzer.analyze(test_msg)
         logger.info("✓ Claude API verified")

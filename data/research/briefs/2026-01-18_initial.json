@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-01-18T20:24:02.950992",
+  "brief_type": "initial",
+  "timezone": "Europe/Madrid",
+  "market_regime": {
+    "state": "neutral",
+    "trend": "ranging",
+    "summary": "Markets in consolidation mode with ES futures down -0.1% at 6976.75 and NQ futures flat at 25689.0. VIX at 15.86 indicates complacent conditions but not extreme euphoria. Absence of major catalysts (earnings, economic data, news flow) suggests low-volatility drift ahead of next week's potential market movers."
+  },
+  "ideas": [],
+  "watchlist": [
+    {
+      "ticker": "SPY",
+      "setup": "Range-bound between 695-700 resistance zone",
+      "trigger": "Break above 700 with volume expansion or decline below 690 support"
+    },
+    {
+      "ticker": "QQQ",
+      "setup": "Testing prior highs near 510-515 area",
+      "trigger": "Earnings catalyst from mega-cap tech next week or macro data shift"
+    },
+    {
+      "ticker": "VIX",
+      "setup": "Compressed volatility at 15.86 near cycle lows",
+      "trigger": "Spike above 18 on any unexpected news or geopolitical event"
+    }
+  ],
+  "risks": [
+    "Weekend geopolitical developments could gap markets Monday",
+    "Low volume environment makes any news impact more pronounced",
+    "VIX compression at 15.86 suggests complacency - any catalyst could trigger vol expansion"
+  ],
+  "key_questions": [
+    "Will next week's earnings season provide directional catalyst for tech megacaps?",
+    "Are markets too complacent with VIX sub-16 heading into earnings season?",
+    "What macro catalyst will break the current low-volatility consolidation pattern?"
+  ],
+  "data_sources_used": [
+    "market"
+  ],
+  "fetch_duration_seconds": 0.908913,
+  "analysis_duration_seconds": 9.924129
+}

@@ -73,6 +73,17 @@ Respond ONLY with valid JSON, no other text.'''
             )
 
             result_text = response.content[0].text
+
+            # Strip markdown code blocks if present
+            if result_text.startswith("```"):
+                # Remove ```json or ``` at start and ``` at end
+                lines = result_text.strip().split("\n")
+                if lines[0].startswith("```"):
+                    lines = lines[1:]  # Remove first line (```json)
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]  # Remove last line (```)
+                result_text = "\n".join(lines)
+
             result_data = json.loads(result_text)
 
             return ClaudeAnalysisResult(
