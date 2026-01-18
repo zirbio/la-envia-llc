@@ -19,12 +19,18 @@ def load_briefs(briefs_dir: Path, date: datetime) -> dict:
     pre_open_path = briefs_dir / f"{date_str}_pre_open.json"
 
     if initial_path.exists():
-        with open(initial_path) as f:
-            briefs["initial"] = json.load(f)
+        try:
+            with open(initial_path, encoding='utf-8') as f:
+                briefs["initial"] = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            st.error(f"Error loading initial brief: {e}")
 
     if pre_open_path.exists():
-        with open(pre_open_path) as f:
-            briefs["pre_open"] = json.load(f)
+        try:
+            with open(pre_open_path, encoding='utf-8') as f:
+                briefs["pre_open"] = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            st.error(f"Error loading pre-open brief: {e}")
 
     return briefs
 
@@ -37,7 +43,7 @@ with col2:
     brief_type = st.selectbox("Brief Type", ["pre_open", "initial"])
 
 # Load briefs
-briefs_dir = Path("data/research/briefs")
+briefs_dir = Path(__file__).parent.parent.parent.parent / "data" / "research" / "briefs"
 briefs = load_briefs(briefs_dir, datetime.combine(selected_date, datetime.min.time()))
 
 if brief_type in briefs:
@@ -62,9 +68,6 @@ if brief_type in briefs:
     ideas = brief.get("ideas", [])
     if ideas:
         for idea in ideas:
-            conviction_color = {"HIGH": "green", "MEDIUM": "orange", "LOW": "gray"}.get(
-                idea.get("conviction", ""), "gray"
-            )
             direction_emoji = "⬆️" if idea.get("direction") == "LONG" else "⬇️"
 
             with st.expander(
