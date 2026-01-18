@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 
 from anthropic import Anthropic
+from pydantic import ValidationError
 
 from src.research.models import DailyBrief, MarketRegime, TradingIdea, WatchlistItem
 from src.research.data_fetchers import MarketFetcher
@@ -53,7 +54,16 @@ class MorningResearchAgent:
 
         Returns:
             Generated DailyBrief.
+
+        Raises:
+            ValueError: If brief_type is not "initial" or "pre_open".
         """
+        # Validate brief_type parameter
+        if brief_type not in ("initial", "pre_open"):
+            raise ValueError(
+                f"Invalid brief_type: {brief_type}. Must be 'initial' or 'pre_open'."
+            )
+
         start_time = datetime.now()
 
         # Fetch all data in parallel
@@ -116,7 +126,9 @@ class MorningResearchAgent:
         """
         context = build_context(data)
 
-        message = self._claude_client.messages.create(
+        # Run synchronous Claude API call in thread pool to avoid blocking event loop
+        message = await asyncio.to_thread(
+            self._claude_client.messages.create,
             model=self._claude_model,
             max_tokens=self._max_tokens,
             messages=[
@@ -185,7 +197,7 @@ class MorningResearchAgent:
             try:
                 idea = TradingIdea.model_validate(idea_data)
                 ideas.append(idea)
-            except Exception as e:
+            except ValidationError as e:
                 logger.warning(f"Failed to parse idea: {e}")
 
         # Parse watchlist
@@ -194,7 +206,7 @@ class MorningResearchAgent:
             try:
                 item = WatchlistItem.model_validate(item_data)
                 watchlist.append(item)
-            except Exception as e:
+            except ValidationError as e:
                 logger.warning(f"Failed to parse watchlist item: {e}")
 
         return DailyBrief(
