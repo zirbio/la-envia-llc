@@ -112,3 +112,26 @@ async def test_initialize_infrastructure_success():
                 assert telegram is not None
                 mock_alpaca_instance.connect.assert_called_once()
                 mock_telegram_instance.start.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_initialize_analyzers_success():
+    """Test successful analyzer initialization."""
+    from main import initialize_analyzers
+    from src.config.settings import Settings
+
+    settings = Settings.from_yaml(Path("config/settings.yaml"))
+
+    with patch("main.SentimentAnalyzer") as mock_sent:
+        with patch("main.ClaudeAnalyzer") as mock_claude:
+            with patch("main.AnalyzerManager") as mock_manager:
+                with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test_key"}):
+                    # Mock successful init
+                    mock_sent_instance = mock_sent.return_value
+                    mock_claude_instance = mock_claude.return_value
+                    mock_claude_instance.analyze.return_value = None
+
+                    analyzer_manager = await initialize_analyzers(settings)
+
+                    assert analyzer_manager is not None
+                    mock_claude_instance.analyze.assert_called_once()

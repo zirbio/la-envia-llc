@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 import logging
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -16,6 +17,8 @@ from src.collectors.collector_manager import CollectorManager
 from src.execution.alpaca_client import AlpacaClient
 from src.notifications import TelegramNotifier, AlertFormatter
 from src.notifications.models import Alert, AlertType
+from src.analyzers import AnalyzerManager, SentimentAnalyzer, ClaudeAnalyzer
+from src.models.social_message import SocialMessage
 
 
 # Configure logging
@@ -157,6 +160,67 @@ async def initialize_infrastructure(settings: Settings) -> tuple[AlpacaClient, T
         sys.exit(1)
 
     return alpaca_client, telegram
+
+
+async def initialize_analyzers(settings: Settings) -> AnalyzerManager:
+    """Initialize analysis components (FinTwitBERT + Claude).
+
+    Args:
+        settings: Loaded settings object.
+
+    Returns:
+        AnalyzerManager instance.
+
+    Raises:
+        SystemExit: If model download or API connection fails.
+    """
+    # Initialize SentimentAnalyzer
+    try:
+        sentiment_analyzer = SentimentAnalyzer(
+            model_name=settings.analyzers.sentiment.model,
+            batch_size=settings.analyzers.sentiment.batch_size,
+        )
+        logger.info("✓ FinTwitBERT model loaded")
+
+    except Exception as e:
+        logger.error(f"Failed to load FinTwitBERT model: {e}")
+        logger.error("Check internet connection for model download")
+        sys.exit(1)
+
+    # Initialize ClaudeAnalyzer
+    try:
+        claude_analyzer = ClaudeAnalyzer(
+            api_key=os.getenv("ANTHROPIC_API_KEY"),
+            model=settings.analyzers.claude.model,
+            max_tokens=settings.analyzers.claude.max_tokens,
+            rate_limit_per_minute=settings.analyzers.claude.rate_limit_per_minute,
+        )
+        # Test connection with simple message
+        test_msg = SocialMessage(
+            source="twitter",
+            source_id="test_001",
+            author="test_user",
+            content="Test message for API verification",
+            timestamp=datetime.now(),
+            url="https://test.com"
+        )
+        _ = claude_analyzer.analyze(test_msg)
+        logger.info("✓ Claude API verified")
+
+    except Exception as e:
+        logger.error(f"Claude API test failed: {e}")
+        logger.error("Check ANTHROPIC_API_KEY in .env")
+        sys.exit(1)
+
+    # Create AnalyzerManager
+    analyzer_manager = AnalyzerManager(
+        sentiment_analyzer=sentiment_analyzer,
+        claude_analyzer=claude_analyzer,
+        min_sentiment_confidence=settings.analyzers.sentiment.min_confidence,
+        enable_deep_analysis=settings.analyzers.claude.enabled,
+    )
+
+    return analyzer_manager
 
 
 async def main():
