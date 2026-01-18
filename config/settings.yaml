@@ -7,36 +7,33 @@ system:
   timezone: "America/New_York"
 
 collectors:
+  # DEPRECADO: Reemplazado por grok
   twitter:
-    enabled: true
+    enabled: false
     engine: "twscrape"
     accounts_pool_size: 5
     rate_limit_buffer: 0.8
     refresh_interval_seconds: 15
 
   reddit:
-    enabled: true
+    enabled: false
     use_streaming: true
     batch_fallback_interval: 60
 
   stocktwits:
-    enabled: true
+    enabled: false
     refresh_interval_seconds: 30
 
+  # NUEVO: Grok collector (configuración ultra-optimizada para costos mínimos)
   grok:
     enabled: true
-    refresh_interval_seconds: 30
-    max_results_per_query: 20
+    refresh_interval_seconds: 900  # 15 min (vs 30 seg original = 96% reducción de búsquedas)
+    max_results_per_query: 5       # Solo top 5 tweets más relevantes
     search_queries:
-      - "$NVDA"
-      - "$TSLA"
-      - "$AMD"
-      - "$AAPL"
-      - "$META"
-      - "unusual options activity"
-      - "dark pool"
-      - "from:unusual_whales"
-      - "from:DeItaone"
+      # SOLO cuentas tier1 verificadas (evita búsquedas amplias por keywords)
+      - "from:unusual_whales"      # Options flow institucional
+      - "from:DeItaone"             # Breaking news financiero
+      - "from:FirstSquawk"          # Noticias mercado
 
 risk:
   circuit_breakers:
@@ -53,7 +50,9 @@ risk:
 
 # CAPA 2: Análisis
 analyzers:
+  # DEPRECADO: FinTwitBERT reemplazado por sentiment nativo de Grok
   sentiment:
+    enabled: false
     model: "StephanAkkerman/FinTwitBERT-sentiment"
     batch_size: 32
     min_confidence: 0.7
@@ -123,24 +122,22 @@ scoring:
   earnings_proximity_days: 3
   earnings_factor: 0.7
 
-  # Source credibility multipliers
+  # Source credibility multipliers (DEPRECADO - ahora es dinámico)
   credibility_tier1_multiplier: 1.2
   credibility_tier2_multiplier: 1.0
   credibility_tier3_multiplier: 0.8
-  tier1_sources:
-    - unusual_whales
-    - optionsflow
 
-  # Dynamic credibility settings
+  # Credibilidad dinámica (NUEVO)
   tier1_seeds:
+    # Seeds iniciales - el sistema aprenderá y ajustará automáticamente
     - unusual_whales
     - DeItaone
     - FirstSquawk
-    - optionsflow
-    - zerohedge
-  min_signals_for_dynamic: 5
-  evaluation_window_minutes: 30
-  success_threshold_percent: 1.0
+
+  # Configuración de aprendizaje
+  min_signals_for_dynamic: 5           # Mínimo de señales antes de ajustar credibilidad
+  evaluation_window_minutes: 30        # Ventana para evaluar si señal fue correcta
+  success_threshold_percent: 1.0       # +1% para considerar señal exitosa
 
 # CAPA 5: Risk Management Settings
 risk_settings:
