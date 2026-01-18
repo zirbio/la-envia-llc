@@ -174,3 +174,34 @@ def test_initialize_pipeline_components_success():
     assert "risk_manager" in components
     assert "journal" in components
     assert "executor" in components
+
+
+def test_initialize_orchestrator_success():
+    """Test successful orchestrator initialization."""
+    from main import initialize_orchestrator
+    from src.config.settings import Settings
+
+    settings = Settings.from_yaml(Path("config/settings.yaml"))
+
+    # Create mocks for all dependencies
+    mock_collector_manager = MagicMock()
+    mock_analyzer_manager = MagicMock()
+    mock_components = {
+        "scorer": MagicMock(),
+        "validator": MagicMock(),
+        "gate": MagicMock(),
+        "risk_manager": MagicMock(),
+        "journal": MagicMock(),
+        "executor": MagicMock(),
+    }
+
+    with patch("main.TradingOrchestrator") as mock_orch:
+        orchestrator = initialize_orchestrator(
+            settings,
+            mock_collector_manager,
+            mock_analyzer_manager,
+            mock_components,
+        )
+
+        assert orchestrator is not None
+        mock_orch.assert_called_once()

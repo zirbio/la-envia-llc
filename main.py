@@ -29,6 +29,7 @@ from src.gate import MarketGate
 from src.risk import RiskManager
 from src.journal import JournalManager
 from src.execution import TradeExecutor
+from src.orchestrator import TradingOrchestrator
 
 
 # Configure logging
@@ -405,3 +406,35 @@ def initialize_pipeline_components(
         "journal": journal_manager,
         "executor": trade_executor,
     }
+
+
+def initialize_orchestrator(
+    settings: Settings,
+    collector_manager: CollectorManager,
+    analyzer_manager: AnalyzerManager,
+    components: dict,
+) -> TradingOrchestrator:
+    """Initialize TradingOrchestrator.
+
+    Args:
+        settings: Loaded settings object.
+        collector_manager: Initialized collector manager.
+        analyzer_manager: Initialized analyzer manager.
+        components: Dict with pipeline components.
+
+    Returns:
+        TradingOrchestrator instance.
+    """
+    orchestrator = TradingOrchestrator(
+        collector_manager=collector_manager,
+        analyzer_manager=analyzer_manager,
+        technical_validator=components["validator"],
+        signal_scorer=components["scorer"],
+        risk_manager=components["risk_manager"],
+        market_gate=components["gate"],
+        trade_executor=components["executor"],
+        settings=settings.orchestrator,
+    )
+    logger.info("✓ TradingOrchestrator initialized")
+
+    return orchestrator
