@@ -55,6 +55,11 @@ config/secrets.yaml
 *.pem
 *.key
 
+# Twitter scraping
+accounts.db
+accounts.db-shm
+accounts.db-wal
+
 # Jupyter
 .ipynb_checkpoints/
 
