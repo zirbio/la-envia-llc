@@ -74,69 +74,52 @@ await pool.login_all()
 
 ## 2. Actualizar main.py con Pipeline Completo
 
-El `main.py` actual es básico. Necesita integrar todos los componentes:
+✅ **COMPLETADO** - El `main.py` ahora integra todos los componentes del sistema.
 
-```python
-# main.py - Versión completa sugerida
-import asyncio
-from pathlib import Path
-from dotenv import load_dotenv
+### Cambios Implementados
 
-from src.config.settings import Settings
-from src.orchestrator import TradingOrchestrator, OrchestratorSettings
-from src.collectors import CollectorManager, TwitterCollector, RedditCollector, StocktwitsCollector
-from src.analyzers import AnalyzerManager, SentimentAnalyzer, ClaudeAnalyzer
-from src.validators import TechnicalValidator
-from src.scoring import ScoringEngine
-from src.gate import MarketGate
-from src.risk import RiskManager
-from src.execution import ExecutionManager, AlpacaClient
-from src.notifications import NotificationManager, TelegramNotifier
-from src.journal import JournalManager
+1. **Inicialización Secuencial en 6 Fases:**
+   - Fase 1: Configuración (env vars, settings, data dirs)
+   - Fase 2: Infraestructura (Alpaca, Telegram)
+   - Fase 3: Análisis (FinTwitBERT, Claude)
+   - Fase 4: Collectors (Stocktwits, Reddit opcional)
+   - Fase 5: Pipeline (Scorer, Validator, Gate, Risk, Journal, Executor)
+   - Fase 6: Orchestrator (coordinador principal)
 
+2. **Funciones Helper:**
+   - `validate_env_vars()` - Valida variables requeridas
+   - `create_data_dirs()` - Crea estructura de directorios
+   - `print_startup_banner()` - Banner de inicio
 
-async def main():
-    load_dotenv()
-    settings = Settings.from_yaml(Path("config/settings.yaml"))
+3. **Manejo de Errores:**
+   - Fail-fast: El sistema se detiene inmediatamente si falla un componente crítico
+   - Mensajes claros indicando qué falló y cómo arreglarlo
+   - Reddit opcional: Se salta si no hay credenciales (warning, no error)
 
-    # Inicializar componentes
-    alpaca = AlpacaClient(...)
-    await alpaca.connect()
+4. **Shutdown Graceful:**
+   - Detiene orchestrator procesando mensajes pendientes
+   - Desconecta Alpaca
+   - Envía notificación final a Telegram
+   - Logs claros de cada paso
 
-    collector_manager = CollectorManager([...])
-    analyzer_manager = AnalyzerManager([...])
-    technical_validator = TechnicalValidator(...)
-    scoring_engine = ScoringEngine(...)
-    market_gate = MarketGate(...)
-    risk_manager = RiskManager(...)
-    execution_manager = ExecutionManager(alpaca, ...)
-    notification_manager = NotificationManager([TelegramNotifier(...)])
-    journal_manager = JournalManager(...)
+5. **Observabilidad:**
+   - Logging estructurado con timestamps
+   - Checkmark ✓ para cada componente inicializado
+   - Mensajes informativos durante operación
 
-    # Crear orquestador
-    orchestrator = TradingOrchestrator(
-        collector_manager=collector_manager,
-        analyzer_manager=analyzer_manager,
-        technical_validator=technical_validator,
-        scoring_engine=scoring_engine,
-        market_gate=market_gate,
-        risk_manager=risk_manager,
-        execution_manager=execution_manager,
-        notification_manager=notification_manager,
-        journal_manager=journal_manager,
-        settings=OrchestratorSettings(...),
-    )
+### Cómo Ejecutar
 
-    # Ejecutar
-    try:
-        await orchestrator.start()
-    except KeyboardInterrupt:
-        await orchestrator.stop()
+```bash
+# Crear directorios de datos (primera vez)
+mkdir -p data/trades data/signals data/cache data/backtest_results
 
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Ejecutar sistema
+uv run python main.py
 ```
+
+### Salida Esperada
+
+Ver `docs/plans/2026-01-18-main-integration-design.md` sección "Execution" para la salida completa esperada.
 
 ---
 
