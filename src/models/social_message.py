@@ -13,6 +13,7 @@ class SourceType(str, Enum):
     STOCKTWITS = "stocktwits"
     NEWS = "news"
     GROK = "grok"
+    RESEARCH = "research"  # Morning Research Agent
 
 
 # Common crypto tickers to exclude

@@ -80,3 +80,10 @@ def test_grok_source_type_exists():
     """Verify GROK source type exists for Grok API integration."""
     from src.models.social_message import SourceType
     assert SourceType.GROK == "grok"
+
+
+def test_source_type_research_exists():
+    """Test that RESEARCH source type is available."""
+    from src.models.social_message import SourceType
+    assert SourceType.RESEARCH == "research"
+    assert SourceType.RESEARCH.value == "research"
