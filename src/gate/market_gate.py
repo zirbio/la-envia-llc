@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
-from execution.alpaca_client import AlpacaClient
-from gate.models import GateCheckResult, GateStatus
-from gate.vix_fetcher import VixFetcher
+from src.execution.alpaca_client import AlpacaClient
+from src.gate.models import GateCheckResult, GateStatus
+from src.gate.vix_fetcher import VixFetcher
 
 
 ET = ZoneInfo("America/New_York")

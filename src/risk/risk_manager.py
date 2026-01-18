@@ -2,8 +2,8 @@
 
 from datetime import date
 
-from risk.models import DailyRiskState, RiskCheckResult
-from scoring.models import Direction, TradeRecommendation
+from src.risk.models import DailyRiskState, RiskCheckResult
+from src.scoring.models import Direction, TradeRecommendation
 
 
 class RiskManager:

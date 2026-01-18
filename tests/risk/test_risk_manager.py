@@ -4,9 +4,9 @@ from datetime import datetime, date
 
 import pytest
 
-from risk.models import DailyRiskState
-from risk.risk_manager import RiskManager
-from scoring.models import (
+from src.risk.models import DailyRiskState
+from src.risk.risk_manager import RiskManager
+from src.scoring.models import (
     Direction,
     ScoreComponents,
     ScoreTier,
