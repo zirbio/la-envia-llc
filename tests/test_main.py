@@ -1,7 +1,7 @@
 """Tests for main.py helper functions."""
 import os
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
 
 
@@ -135,3 +135,23 @@ async def test_initialize_analyzers_success():
 
                     assert analyzer_manager is not None
                     mock_claude_instance.analyze.assert_called_once()
+
+
+def test_initialize_collectors_success():
+    """Test successful collector initialization."""
+    from main import initialize_collectors
+    from src.config.settings import Settings
+    from src.execution.alpaca_client import AlpacaClient
+
+    settings = Settings.from_yaml(Path("config/settings.yaml"))
+    mock_alpaca = MagicMock(spec=AlpacaClient)
+
+    with patch("main.StocktwitsCollector") as mock_st:
+        with patch("main.RedditCollector") as mock_reddit:
+            with patch("main.CollectorManager") as mock_manager:
+                with patch.dict(os.environ, {}, clear=True):  # No Reddit creds
+                    collector_manager = initialize_collectors(settings, mock_alpaca)
+
+                    assert collector_manager is not None
+                    # Should create Stocktwits (no auth needed)
+                    mock_st.assert_called_once()

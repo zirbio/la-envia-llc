@@ -10,10 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.config.settings import Settings
-from src.collectors.twitter_collector import TwitterCollector
-from src.collectors.reddit_collector import RedditCollector
-from src.collectors.stocktwits_collector import StocktwitsCollector
-from src.collectors.collector_manager import CollectorManager
+from src.collectors import CollectorManager, StocktwitsCollector, RedditCollector
 from src.execution.alpaca_client import AlpacaClient
 from src.notifications import TelegramNotifier, AlertFormatter
 from src.notifications.models import Alert, AlertType
@@ -221,6 +218,68 @@ async def initialize_analyzers(settings: Settings) -> AnalyzerManager:
     )
 
     return analyzer_manager
+
+
+def initialize_collectors(settings: Settings, alpaca_client: AlpacaClient) -> CollectorManager:
+    """Initialize data collectors.
+
+    Args:
+        settings: Loaded settings object.
+        alpaca_client: Connected Alpaca client for news.
+
+    Returns:
+        CollectorManager with available collectors.
+
+    Raises:
+        SystemExit: If no collectors available.
+    """
+    collectors = []
+
+    # Stocktwits (no auth required)
+    if settings.collectors.stocktwits.enabled:
+        stocktwits = StocktwitsCollector(
+            watchlist=["AAPL", "NVDA", "TSLA", "AMD", "META"],
+            refresh_interval=settings.collectors.stocktwits.refresh_interval_seconds,
+        )
+        collectors.append(stocktwits)
+        logger.info("✓ Stocktwits collector initialized")
+
+    # Alpaca News (uses existing client)
+    # TODO: Add AlpacaNewsCollector when implemented
+
+    # Reddit (optional - skip if no credentials)
+    if settings.collectors.reddit.enabled:
+        reddit_id = os.getenv("REDDIT_CLIENT_ID")
+        reddit_secret = os.getenv("REDDIT_CLIENT_SECRET")
+
+        if reddit_id and reddit_secret:
+            try:
+                reddit = RedditCollector(
+                    subreddits=["wallstreetbets", "stocks", "options"],
+                    client_id=reddit_id,
+                    client_secret=reddit_secret,
+                    user_agent=settings.reddit_api.user_agent,
+                    use_streaming=settings.collectors.reddit.use_streaming,
+                )
+                collectors.append(reddit)
+                logger.info("✓ Reddit collector initialized")
+            except Exception as e:
+                logger.warning(f"Reddit collector init failed: {e}")
+                logger.warning("Continuing without Reddit")
+        else:
+            logger.warning("Reddit credentials not found - skipping Reddit collector")
+            logger.warning("Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET to enable")
+
+    # Verify we have at least one collector
+    if not collectors:
+        logger.error("No collectors available")
+        logger.error("At least Stocktwits should work")
+        sys.exit(1)
+
+    collector_names = [c.__class__.__name__ for c in collectors]
+    logger.info(f"✓ Collectors initialized: {', '.join(collector_names)} ({len(collectors)}/{3})")
+
+    return CollectorManager(collectors=collectors)
 
 
 async def main():
