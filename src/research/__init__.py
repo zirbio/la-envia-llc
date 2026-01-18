@@ -12,11 +12,7 @@ from src.research.models import (
     DailyBrief,
 )
 from src.research.integration import idea_to_social_message
-from src.research.prompts import (
-    SYSTEM_PROMPT,
-    build_context,
-    TASK_PROMPT,
-)
+from src.research.morning_agent import MorningResearchAgent
 
 __all__ = [
     "Direction",
@@ -29,7 +25,5 @@ __all__ = [
     "WatchlistItem",
     "DailyBrief",
     "idea_to_social_message",
-    "SYSTEM_PROMPT",
-    "build_context",
-    "TASK_PROMPT",
+    "MorningResearchAgent",
 ]
