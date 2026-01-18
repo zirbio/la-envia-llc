@@ -38,10 +38,18 @@ class StocktwitsCollectorConfig(BaseModel):
     refresh_interval_seconds: int = 30
 
 
+class GrokCollectorConfig(BaseModel):
+    enabled: bool = True
+    refresh_interval_seconds: int = 30
+    max_results_per_query: int = 20
+    search_queries: list[str] = Field(default_factory=list)
+
+
 class CollectorsConfig(BaseModel):
     twitter: TwitterCollectorConfig = Field(default_factory=TwitterCollectorConfig)
     reddit: RedditCollectorConfig = Field(default_factory=RedditCollectorConfig)
     stocktwits: StocktwitsCollectorConfig = Field(default_factory=StocktwitsCollectorConfig)
+    grok: GrokCollectorConfig = Field(default_factory=GrokCollectorConfig)
 
 
 class PerTradeRiskConfig(BaseModel):
@@ -174,6 +182,20 @@ class ScoringSettings(BaseModel):
             "optionsflow",
         ]
     )
+
+    # Dynamic credibility settings
+    tier1_seeds: list[str] = Field(
+        default_factory=lambda: [
+            "unusual_whales",
+            "DeItaone",
+            "FirstSquawk",
+            "optionsflow",
+            "zerohedge",
+        ]
+    )
+    min_signals_for_dynamic: int = Field(default=5, ge=1)
+    evaluation_window_minutes: int = Field(default=30, ge=1)
+    success_threshold_percent: float = Field(default=1.0, ge=0.0)
 
 
 class RiskSettings(BaseModel):
