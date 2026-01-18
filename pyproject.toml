@@ -8,6 +8,7 @@ dependencies = [
     "aiohttp>=3.13.3",
     "alpaca-py>=0.43.2",
     "anthropic>=0.76.0",
+    "openai>=2.15.0",
     "pandas-ta>=0.4.71b0",
     "plotly>=6.5.2",
     "pydantic>=2.12.5",
