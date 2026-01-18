@@ -2,6 +2,8 @@
 """Main entry point for the intraday trading system."""
 import asyncio
 import os
+import sys
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -12,6 +14,59 @@ from src.collectors.reddit_collector import RedditCollector
 from src.collectors.stocktwits_collector import StocktwitsCollector
 from src.collectors.collector_manager import CollectorManager
 from src.execution.alpaca_client import AlpacaClient
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+
+def validate_env_vars() -> None:
+    """Validate required environment variables are set.
+
+    Raises:
+        SystemExit: If any required env var is missing.
+    """
+    required_vars = [
+        "ALPACA_API_KEY",
+        "ALPACA_SECRET_KEY",
+        "ANTHROPIC_API_KEY",
+    ]
+
+    missing = [var for var in required_vars if not os.getenv(var)]
+
+    if missing:
+        logger.error(f"Missing required environment variables: {', '.join(missing)}")
+        logger.error("Please check your .env file")
+        sys.exit(1)
+
+
+def create_data_dirs() -> None:
+    """Create required data directories if they don't exist."""
+    dirs = [
+        Path("data/trades"),
+        Path("data/signals"),
+        Path("data/cache"),
+        Path("data/backtest_results"),
+    ]
+
+    for dir_path in dirs:
+        dir_path.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Data directories verified")
+
+
+def print_startup_banner(settings: Settings) -> None:
+    """Print system startup banner."""
+    logger.info("=" * 60)
+    logger.info(f"Starting {settings.system.name}")
+    logger.info(f"Mode: {settings.system.mode}")
+    logger.info(f"Version: {settings.system.version}")
+    logger.info("=" * 60)
 
 
 async def main():
