@@ -7,6 +7,10 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+# Add src directory to Python path for internal imports
+src_path = Path(__file__).parent / "src"
+sys.path.insert(0, str(src_path))
+
 from dotenv import load_dotenv
 
 from src.config.settings import Settings
