@@ -7,7 +7,11 @@ from src.research.models import (
     TechnicalLevels,
     RiskReward,
     TradingIdea,
+    MarketRegime,
+    WatchlistItem,
+    DailyBrief,
 )
+from src.research.integration import idea_to_social_message
 
 __all__ = [
     "Direction",
@@ -16,4 +20,8 @@ __all__ = [
     "TechnicalLevels",
     "RiskReward",
     "TradingIdea",
+    "MarketRegime",
+    "WatchlistItem",
+    "DailyBrief",
+    "idea_to_social_message",
 ]

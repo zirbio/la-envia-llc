@@ -48,6 +48,9 @@ class SocialMessage(BaseModel):
     # Extracted data (populated later)
     extracted_tickers: list[str] = Field(default_factory=list)
 
+    # Research-specific metadata
+    metadata: dict = Field(default_factory=dict)
+
     def extract_tickers(self, exclude_crypto: bool = True) -> list[str]:
         """Extract stock tickers from content.
 
