@@ -207,3 +207,18 @@ journal:
   default_period_days: 30
   weekly_report_enabled: true
   weekly_report_day: "saturday"
+
+# Morning Research Agent
+research:
+  enabled: true
+  timezone: "Europe/Madrid"
+  initial_brief_time: "12:00"
+  pre_open_brief_time: "15:00"
+  claude_model: "claude-sonnet-4-20250514"
+  max_tokens: 4000
+  max_ideas: 5
+  max_watchlist: 5
+  briefs_dir: "data/research/briefs"
+  inject_to_orchestrator: true
+  telegram_enabled: true
+  telegram_summary: true

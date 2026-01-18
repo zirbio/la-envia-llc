@@ -233,6 +233,22 @@ class RedditAPIConfig(BaseSettings):
     user_agent: str = "TradingBot/1.0"
 
 
+class ResearchConfig(BaseModel):
+    """Configuration for Morning Research Agent."""
+    enabled: bool = True
+    timezone: str = "Europe/Madrid"
+    initial_brief_time: str = "12:00"
+    pre_open_brief_time: str = "15:00"
+    claude_model: str = "claude-sonnet-4-20250514"
+    max_tokens: int = 4000
+    max_ideas: int = 5
+    max_watchlist: int = 5
+    briefs_dir: str = "data/research/briefs"
+    inject_to_orchestrator: bool = True
+    telegram_enabled: bool = True
+    telegram_summary: bool = True
+
+
 class Settings(BaseModel):
     system: SystemConfig = Field(default_factory=SystemConfig)
     collectors: CollectorsConfig = Field(default_factory=CollectorsConfig)
@@ -246,6 +262,7 @@ class Settings(BaseModel):
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     journal: JournalSettings = Field(default_factory=JournalSettings)
+    research: ResearchConfig = Field(default_factory=ResearchConfig)
     alpaca: AlpacaConfig = Field(default_factory=AlpacaConfig)
     reddit_api: RedditAPIConfig = Field(default_factory=RedditAPIConfig)
 
