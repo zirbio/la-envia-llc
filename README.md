@@ -4,13 +4,14 @@ Sistema de trading intradiario impulsado por IA que combina análisis de redes s
 
 ## Características
 
-- **Análisis Social-First**: Detecta oportunidades en Twitter, Reddit y Stocktwits
-- **Análisis de Sentimiento**: FinTwitBERT para análisis rápido + Claude AI para análisis profundo
+- **Morning Research Agent**: Daily Briefs pre-mercado con ideas de trading (12:00 y 15:00 Madrid)
+- **Señales Sociales via Grok**: Análisis de X/Twitter con sentiment nativo
+- **Análisis Profundo con Claude**: Catalizadores, riesgos y contexto de mercado
 - **Validación Técnica**: RSI, MACD, ADX, volumen, flujo de opciones
 - **Gestión de Riesgo**: Circuit breakers por trade (1%), diario (3%) y semanal (6%)
 - **Ejecución Automatizada**: Integración con Alpaca API (paper y live)
-- **Dashboard en Tiempo Real**: Monitoreo via Streamlit
-- **Notificaciones**: Alertas via Telegram
+- **Dashboard en Tiempo Real**: Monitoreo via Streamlit (incluyendo Research)
+- **Notificaciones**: Alertas y Daily Briefs via Telegram
 
 ## Requisitos
 
@@ -39,22 +40,20 @@ nano .env
 ### Variables de Entorno (.env)
 
 ```bash
+# Grok/xAI (REQUERIDO para señales sociales)
+XAI_API_KEY=xai-XXXXXXXXXXXXXXXX
+
 # Alpaca (REQUERIDO)
 ALPACA_API_KEY=PKXXXXXXXXXXXXXXXX
 ALPACA_SECRET_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ALPACA_PAPER=true
 
-# Claude AI (REQUERIDO para análisis profundo)
+# Claude AI (REQUERIDO para análisis y Research Agent)
 ANTHROPIC_API_KEY=sk-ant-XXXXXXXXXXXXXXXX
 
-# Telegram (REQUERIDO para alertas)
+# Telegram (REQUERIDO para alertas y Daily Briefs)
 TELEGRAM_BOT_TOKEN=1234567890:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 TELEGRAM_CHAT_ID=123456789
-
-# Reddit (OPCIONAL)
-REDDIT_CLIENT_ID=XXXXXXXXXXXXXX
-REDDIT_CLIENT_SECRET=XXXXXXXXXXXXXXXXXXXXXX
-REDDIT_USER_AGENT=TradingBot/1.0
 ```
 
 ### Parámetros del Sistema (config/settings.yaml)
@@ -85,18 +84,24 @@ uv run pytest tests/path/test_file.py -v
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
+│                MORNING RESEARCH AGENT                       │
+│   (Pre-market: 12:00 y 15:00 Madrid)                        │
+│   Futures + VIX + Gappers → Claude → Daily Brief + Ideas    │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
 │                    MARKET GATE (Capa 0)                     │
 │   Horario OK? │ Volumen OK? │ VIX OK? │ No choppy?          │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                   COLLECTORS (Capa 1)                       │
-│   Twitter │ Reddit │ Stocktwits │ Alpaca News               │
+│   Grok (X/Twitter con sentiment nativo)                     │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                   ANALYZERS (Capa 2)                        │
-│   FinTwitBERT Sentiment │ Ticker Extraction │ Claude AI     │
+│   Claude AI (catalizadores, riesgo, contexto)               │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -124,8 +129,9 @@ uv run pytest tests/path/test_file.py -v
 
 ```
 src/
-├── collectors/      # Recolección de datos sociales
-├── analyzers/       # Análisis de sentimiento (FinTwitBERT, Claude)
+├── research/        # Morning Research Agent (Daily Briefs, Ideas)
+├── collectors/      # Recolección de datos (Grok/xAI)
+├── analyzers/       # Análisis con Claude AI
 ├── validators/      # Validación técnica (RSI, MACD, ADX)
 ├── scoring/         # Sistema de puntuación (SignalScorer)
 ├── gate/            # Filtro de condiciones de mercado
@@ -134,12 +140,12 @@ src/
 ├── orchestrator/    # Coordinador del pipeline
 ├── journal/         # Registro de trades y métricas
 ├── notifications/   # Alertas Telegram
-├── dashboard/       # Interfaz Streamlit
+├── dashboard/       # Interfaz Streamlit (5 páginas)
 ├── config/          # Sistema de configuración Pydantic
 ├── models/          # Modelos de datos
 └── validation/      # Escenarios de validación E2E
 
-tests/               # 664 tests (unit, integration, validation)
+tests/               # 747 tests (unit, integration, validation)
 config/              # Archivos YAML de configuración
 docs/                # Documentación
 ```
@@ -164,10 +170,11 @@ uv run pytest tests/validation/
 
 Acceder a `http://localhost:8501` después de iniciar el dashboard:
 
-1. **Monitoreo** - Posiciones, señales, circuit breakers en tiempo real
-2. **Análisis** - Métricas de rendimiento, gráficos, patrones
-3. **Control** - Parámetros de riesgo, control del gate
-4. **Alertas** - Centro de alertas con historial y filtros
+1. **Home** - Vista general del sistema y estado
+2. **Monitoreo** - Posiciones, señales, circuit breakers en tiempo real
+3. **Análisis** - Métricas de rendimiento, gráficos, patrones
+4. **Control** - Parámetros de riesgo, control del gate
+5. **Research** - Daily Briefs, ideas de trading, historial
 
 ## Documentación
 

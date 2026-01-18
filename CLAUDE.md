@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered intraday trading system that combines social media analysis (Twitter, Reddit, Stocktwits), sentiment analysis (FinTwitBERT + Claude), technical validation, and automated execution via Alpaca API.
+AI-powered intraday trading system that combines:
+- **Morning Research Agent**: Pre-market Daily Briefs with trading ideas (12:00 and 15:00 Madrid time)
+- **Social signals via Grok**: X/Twitter analysis with native sentiment
+- **Deep analysis via Claude**: Catalysts, risks, and market context
+- **Technical validation**: RSI, MACD, ADX, volume, options flow
+- **Automated execution**: Alpaca API (paper and live)
 
 ## Commands
 
@@ -12,7 +17,7 @@ AI-powered intraday trading system that combines social media analysis (Twitter,
 # Install dependencies
 uv sync
 
-# Run all tests (664 tests)
+# Run all tests (747 tests)
 uv run pytest
 
 # Run single test file
@@ -39,17 +44,20 @@ uv run black src/
 
 ## Architecture
 
-7-layer pipeline processing social signals into trade execution:
+Morning Research Agent + 7-layer pipeline:
 
 ```
+Pre-Market: Morning Research Agent (src/research/)
+    → Futures, VIX, gappers via yfinance → Claude analysis → Daily Brief
+
 Layer 0: Market Gate (src/gate/)
     → Trading hours, SPY/QQQ volume, VIX levels, choppy detection
 
 Layer 1: Collectors (src/collectors/)
-    → Twitter (twscrape), Reddit (asyncpraw), Stocktwits, Alpaca News
+    → Grok (xAI) for X/Twitter with native sentiment
 
 Layer 2: Analyzers (src/analyzers/)
-    → FinTwitBERT sentiment, Claude AI catalyst/risk analysis
+    → Claude AI catalyst/risk analysis
 
 Layer 3: Technical Validation (src/validators/)
     → RSI, MACD, ADX, volume, options flow, IV rank
@@ -70,6 +78,8 @@ Layer 6: Execution (src/execution/)
 
 | Module | Entry Point | Purpose |
 |--------|-------------|---------|
+| `research` | `MorningResearchAgent` | Generate Daily Briefs with trading ideas |
+| `collectors` | `GrokCollector` | Collect X/Twitter signals via Grok API |
 | `scoring` | `SignalScorer` | Calculate final score, build `TradeRecommendation` |
 | `execution` | `TradeExecutor` | Submit orders, track positions |
 | `validators` | `TechnicalValidator` | Validate signals against technical indicators |
@@ -81,14 +91,17 @@ Layer 6: Execution (src/execution/)
 ## Configuration
 
 All tunable parameters in `config/settings.yaml`. Key sections:
+- `research`: Morning Research Agent settings (times, Claude model, max ideas)
+- `collectors.grok`: Grok API settings (queries, refresh interval)
 - `scoring`: thresholds (strong≥80, moderate≥60), weights, bonuses
 - `risk`: circuit breaker limits (per-trade, daily, weekly)
 - `validators.technical`: indicator periods (RSI=14, MACD=12/26/9)
 - `market_gate`: trading hours, volume minimums, VIX limits
 
 API credentials via `.env`:
+- `XAI_API_KEY` (Grok/xAI for social signals)
 - `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `ALPACA_PAPER`
-- `ANTHROPIC_API_KEY`
+- `ANTHROPIC_API_KEY` (Claude for analysis and Research Agent)
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 
 ## Code Patterns
@@ -101,7 +114,7 @@ API credentials via `.env`:
 
 ## Testing Notes
 
-- 664 tests across unit, integration, and validation categories
+- 747 tests across unit, integration, and validation categories
 - Use realistic mock data from validation scenarios, not random fixtures
 - Integration tests in `tests/integration/` test complete data flows
 - All async tests use `pytest-asyncio` with `asyncio_mode = "auto"`

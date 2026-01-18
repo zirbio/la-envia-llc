@@ -1,19 +1,30 @@
 # Siguientes Pasos para App Funcional
 
-**Estado actual:** Sistema rediseñado para usar Grok (xAI) como fuente única de señales sociales.
+**Estado actual:** Sistema rediseñado con Grok (xAI) como fuente de señales sociales + Morning Research Agent para análisis pre-mercado.
 
-**Cambio principal:** Eliminamos FinTwitBERT, Stocktwits, Reddit y Twitter/twscrape. Ahora solo Grok + Alpaca.
+**Cambios principales:**
+- Eliminamos FinTwitBERT, Stocktwits, Reddit y Twitter/twscrape
+- Ahora: Grok + Claude + Alpaca
+- **NUEVO:** Morning Research Agent genera Daily Briefs con ideas de trading antes de la apertura
 
 ---
 
 ## ARQUITECTURA SIMPLIFICADA
 
 ```
+                    ┌─────────────────────────────────────┐
+                    │     MORNING RESEARCH AGENT          │
+                    │  (Pre-market: 12:00 y 15:00 Madrid) │
+                    │  Futures + VIX + Gappers → Claude   │
+                    │        → Daily Brief + Ideas        │
+                    └─────────────────────────────────────┘
+                                     ↓
 Grok (señales X/Twitter) → Claude (análisis) → Alpaca (validación + ejecución)
 ```
 
 | Componente | Proveedor | Propósito |
 |------------|-----------|-----------|
+| **Research Agent** | Claude + yfinance | Daily Brief pre-mercado con ideas |
 | Señales sociales | Grok (xAI) | Tweets con sentiment nativo |
 | Análisis profundo | Claude | Catalizadores y riesgo |
 | Datos de mercado | Alpaca | Precios, volumen, técnicos |
@@ -120,6 +131,63 @@ Listening for signals... (Press Ctrl+C to stop)
 # En otra terminal
 uv run streamlit run src/dashboard/Home.py --server.port 8501
 ```
+
+**Páginas del Dashboard:**
+1. **Home** - Vista general del sistema
+2. **Monitoreo** - Posiciones y señales en tiempo real
+3. **Análisis** - Métricas de rendimiento
+4. **Control** - Parámetros de riesgo
+5. **Research** - Daily Briefs e ideas de trading
+
+---
+
+## CONFIGURACIÓN DEL MORNING RESEARCH AGENT
+
+El Morning Research Agent genera Daily Briefs con análisis pre-mercado:
+
+### Horarios (Configurables)
+
+| Brief | Hora Madrid | Hora NY | Contenido |
+|-------|-------------|---------|-----------|
+| Initial | 12:00 | 6:00 AM | Análisis overnight + futures + calendario |
+| Pre-Open | 15:00 | 9:00 AM | Gappers + flow + ideas finales |
+
+### Configuración en settings.yaml
+
+```yaml
+research:
+  enabled: true
+  timezone: "Europe/Madrid"
+  initial_brief_time: "12:00"     # Daily Brief inicial
+  pre_open_brief_time: "15:00"    # Brief pre-apertura
+
+  claude_model: "claude-sonnet-4-20250514"
+  max_tokens: 4096
+  max_ideas: 5                    # Máx ideas de trading por brief
+  max_watchlist: 10               # Máx símbolos en watchlist
+
+  briefs_dir: "data/research/briefs"
+  inject_to_orchestrator: true    # Pasar ideas al pipeline
+
+  telegram_enabled: true          # Enviar briefs por Telegram
+  telegram_summary: true          # Solo resumen vs brief completo
+```
+
+### Estructura de Daily Brief
+
+Cada brief incluye:
+1. **Market Context** - Futures, VIX, overnight moves
+2. **Trading Ideas** - 3-5 ideas con entry/stop/target
+3. **Watchlist** - Símbolos a monitorear
+4. **Key Events** - Earnings, economic calendar
+5. **Risk Notes** - Niveles clave, warnings
+
+### Ver Briefs en Dashboard
+
+Acceder a `http://localhost:8501` → **Research** para:
+- Ver briefs anteriores
+- Explorar ideas individuales
+- Filtrar por fecha y tipo
 
 ---
 
@@ -232,6 +300,8 @@ vs antes: X API Pro $5,000/mes + hosting modelo = $5,100+
 - [ ] Señales aparecen en dashboard
 - [ ] Telegram envía notificaciones
 - [ ] Perfiles de fuentes se crean en data/sources/
+- [ ] Morning Research Agent genera Daily Briefs
+- [ ] Briefs aparecen en dashboard Research
 
 ### Segunda Semana
 
@@ -239,6 +309,7 @@ vs antes: X API Pro $5,000/mes + hosting modelo = $5,100+
 - [ ] Sistema empieza a diferenciar fuentes confiables
 - [ ] Primeros trades ejecutados en paper
 - [ ] Journal registrando operaciones
+- [ ] Ideas del Research Agent evaluadas manualmente
 
 ### Primer Mes
 
@@ -246,6 +317,7 @@ vs antes: X API Pro $5,000/mes + hosting modelo = $5,100+
 - [ ] Sistema identificó nuevas fuentes confiables
 - [ ] Profit factor > 1.0 en paper trading
 - [ ] Circuit breakers funcionando correctamente
+- [ ] Daily Briefs consistentes y útiles
 
 ---
 
@@ -300,4 +372,4 @@ vs antes: X API Pro $5,000/mes + hosting modelo = $5,100+
 
 ---
 
-*Documento actualizado: 2026-01-18*
+*Documento actualizado: 2026-01-18 (Morning Research Agent integrado)*

@@ -19,15 +19,16 @@
 ## 1. Descripción General
 
 Sistema de trading intradiario que combina:
-- **Análisis de redes sociales** (Twitter, Reddit, Stocktwits)
-- **Análisis de sentimiento con IA** (FinTwitBERT + Claude)
+- **Morning Research Agent** - Daily Briefs pre-mercado con ideas de trading
+- **Señales sociales via Grok** (X/Twitter con sentiment nativo)
+- **Análisis profundo con Claude** (catalizadores, riesgo, contexto)
 - **Validación técnica** (RSI, MACD, ADX, volumen)
 - **Gestión de riesgo** (circuit breakers, position sizing)
 - **Ejecución automatizada** via Alpaca API
 
-### Filosofía: Social-First
+### Filosofía: Research + Signal Flow
 
-El sistema detecta oportunidades en redes sociales primero, luego valida técnicamente antes de ejecutar.
+El Morning Research Agent genera ideas pre-mercado. Durante el día, Grok detecta señales sociales que se validan técnicamente antes de ejecutar.
 
 ---
 
@@ -35,18 +36,24 @@ El sistema detecta oportunidades en redes sociales primero, luego valida técnic
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
+│                MORNING RESEARCH AGENT                       │
+│   (Pre-market: 12:00 y 15:00 Madrid)                        │
+│   Futures + VIX + Gappers → Claude → Daily Brief + Ideas    │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
 │                    MARKET GATE (Capa 0)                     │
 │   Horario OK? │ Volumen OK? │ VIX OK? │ No choppy?          │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                   COLLECTORS (Capa 1)                       │
-│   Twitter │ Reddit │ Stocktwits │ Alpaca News               │
+│   Grok (X/Twitter con sentiment nativo)                     │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                   ANALYZERS (Capa 2)                        │
-│   FinTwitBERT Sentiment │ Ticker Extraction │ Claude AI     │
+│   Claude AI (catalizadores, riesgo, contexto)               │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -109,27 +116,37 @@ uv run pytest -x -q
 ### 4.1 Variables de Entorno (.env)
 
 ```bash
+# Grok/xAI (REQUERIDO para señales sociales)
+XAI_API_KEY=xai-XXXXXXXXXXXXXXXX
+
 # Alpaca (REQUERIDO)
 ALPACA_API_KEY=PKXXXXXXXXXXXXXXXX
 ALPACA_SECRET_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ALPACA_PAPER=true
 
-# Claude AI (REQUERIDO para análisis profundo)
+# Claude AI (REQUERIDO para análisis y Research Agent)
 ANTHROPIC_API_KEY=sk-ant-XXXXXXXXXXXXXXXX
 
-# Telegram (REQUERIDO para alertas)
+# Telegram (REQUERIDO para alertas y Daily Briefs)
 TELEGRAM_BOT_TOKEN=1234567890:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 TELEGRAM_CHAT_ID=123456789
-
-# Reddit (OPCIONAL)
-REDDIT_CLIENT_ID=XXXXXXXXXXXXXX
-REDDIT_CLIENT_SECRET=XXXXXXXXXXXXXXXXXXXXXX
-REDDIT_USER_AGENT=TradingBot/1.0
 ```
 
 ### 4.2 Archivo de Configuración (config/settings.yaml)
 
 #### Secciones Principales:
+
+**research:** Morning Research Agent
+```yaml
+research:
+  enabled: true
+  timezone: "Europe/Madrid"
+  initial_brief_time: "12:00"     # Daily Brief inicial
+  pre_open_brief_time: "15:00"    # Brief pre-apertura
+  claude_model: "claude-sonnet-4-20250514"
+  max_ideas: 5                    # Ideas por brief
+  telegram_enabled: true
+```
 
 **system:** Configuración general
 ```yaml
@@ -137,6 +154,19 @@ system:
   name: "Intraday Trading System"
   mode: "paper"  # paper | live
   timezone: "America/New_York"
+```
+
+**collectors:** Recolección de señales
+```yaml
+collectors:
+  grok:
+    enabled: true
+    refresh_interval_seconds: 30
+    search_queries:
+      - "$NVDA"
+      - "$TSLA"
+      - "unusual options activity"
+      - "from:unusual_whales"
 ```
 
 **market_gate:** Condiciones de mercado
@@ -202,46 +232,79 @@ uv run pytest --cov=src --cov-report=html
 
 ## 6. Componentes del Sistema
 
-### 6.1 Collectors (src/collectors/)
+### 6.0 Morning Research Agent (src/research/)
 
-Recolectan mensajes de redes sociales.
+Genera Daily Briefs con ideas de trading antes de la apertura.
 
 ```python
-from src.collectors import CollectorManager, TwitterCollector
+from src.research import MorningResearchAgent
+from src.config.settings import Settings
+
+settings = Settings.from_yaml("config/settings.yaml")
+agent = MorningResearchAgent(settings.research)
+
+# Generar brief inicial (12:00 Madrid)
+brief = await agent.generate_brief("initial")
+
+# brief.market_context = "Futures +0.5%, VIX 15.2"
+# brief.ideas = [TradingIdea(...), ...]
+# brief.watchlist = ["NVDA", "TSLA", "AMD"]
+# brief.key_events = ["NVDA earnings after close"]
+
+# Enviar por Telegram
+await agent.send_brief(brief)
+```
+
+**Tipos de Brief:**
+- `initial` - A las 12:00 Madrid: análisis overnight, futures, calendario
+- `pre_open` - A las 15:00 Madrid: gappers, flow, ideas finales
+
+**Ideas de Trading:**
+Cada idea incluye:
+- Símbolo y dirección (bullish/bearish)
+- Entry, stop loss, target
+- Conviction (high/medium/low)
+- Thesis (razón para el trade)
+
+### 6.1 Collectors (src/collectors/)
+
+Recolectan señales de X/Twitter via Grok API.
+
+```python
+from src.collectors import GrokCollector
 
 # Crear collector
-twitter = TwitterCollector(
-    accounts_to_follow=["unusual_whales", "FirstSquawk"],
-    refresh_interval=15,
+grok = GrokCollector(
+    api_key="xai-...",
+    search_queries=["$NVDA", "$TSLA", "unusual options activity"],
+    refresh_interval=30,
 )
 
-# Crear manager
-manager = CollectorManager([twitter])
+# Conectar e iniciar stream
+await grok.connect()
 
-# Agregar callback para mensajes
-manager.add_callback(lambda msg: print(msg.content))
-
-# Iniciar
-await manager.run()
+async for message in grok.stream():
+    print(f"Signal from @{message.author}: {message.content}")
 ```
 
 ### 6.2 Analyzers (src/analyzers/)
 
-Analizan sentimiento y extraen información.
+Analizan catalizadores y riesgo con Claude.
 
 ```python
-from src.analyzers import SentimentAnalyzer, ClaudeAnalyzer
+from src.analyzers import ClaudeAnalyzer
 
-# Sentiment con FinTwitBERT
-sentiment = SentimentAnalyzer()
-result = await sentiment.analyze("NVDA looking bullish! 🚀")
-# result.direction = "bullish", result.confidence = 0.89
-
-# Análisis profundo con Claude
+# Análisis con Claude
 claude = ClaudeAnalyzer()
 analysis = await claude.analyze_catalyst(message)
-# analysis.catalyst_type, analysis.risk_factors, etc.
+
+# analysis.catalyst_type = "earnings_beat"
+# analysis.risk_factors = ["high_iv", "market_uncertainty"]
+# analysis.sentiment_direction = "bullish"
+# analysis.confidence = 0.85
 ```
+
+**Nota:** El sentiment nativo viene incluido en las respuestas de Grok.
 
 ### 6.3 Technical Validator (src/validators/)
 
@@ -357,12 +420,21 @@ http://localhost:8501
 
 ### 7.2 Páginas Disponibles
 
-1. **Monitoreo** - Monitoreo en tiempo real (posiciones, señales, circuit breakers)
-2. **Análisis** - Análisis de rendimiento (métricas, gráficos, patrones)
-3. **Control** - Control del sistema (parámetros de riesgo, gate)
-4. **Alertas** - Centro de alertas (historial, filtros)
+1. **Home** - Vista general del sistema y estado
+2. **Monitoreo** - Monitoreo en tiempo real (posiciones, señales, circuit breakers)
+3. **Análisis** - Análisis de rendimiento (métricas, gráficos, patrones)
+4. **Control** - Control del sistema (parámetros de riesgo, gate)
+5. **Research** - Daily Briefs, ideas de trading, historial
 
-### 7.3 Alertas en Dashboard
+### 7.3 Página de Research
+
+En la página Research puedes:
+- Ver Daily Briefs anteriores
+- Explorar ideas de trading individuales
+- Filtrar por fecha, tipo de brief, o símbolo
+- Ver métricas de las ideas (si fueron ejecutadas)
+
+### 7.4 Alertas en Dashboard
 
 - 🟢 **Verde**: Sistema funcionando normal
 - 🟡 **Amarillo**: Advertencia (VIX elevado, etc.)
@@ -376,7 +448,8 @@ http://localhost:8501
 
 | Tipo | Descripción |
 |------|-------------|
-| `new_signal` | Nueva señal detectada |
+| `daily_brief` | Daily Brief del Morning Research Agent |
+| `new_signal` | Nueva señal detectada via Grok |
 | `entry_executed` | Trade ejecutado |
 | `exit_executed` | Posición cerrada |
 | `circuit_breaker` | Límite de riesgo alcanzado |
@@ -406,20 +479,45 @@ Score: 85/100 ⭐⭐⭐⭐
 [EJECUTAR] [SKIP]
 ```
 
-### 8.3 Pre-Market Checklist
+### 8.3 Daily Brief (Morning Research Agent)
 
-Cada mañana a las 9:00 AM (configurable):
+Recibes dos briefs automáticos:
 
+**Brief Inicial (12:00 Madrid / 6:00 NY):**
 ```
-📋 Pre-Market Checklist
+📊 DAILY BRIEF - INITIAL
 
-☐ Economic calendar reviewed
-☐ Overnight news checked
-☐ Watchlist prepared
-☐ Mental state: focused
-☐ Risk parameters confirmed
+🌍 OVERNIGHT
+• Futures: ES +0.3%, NQ +0.5%
+• VIX: 15.2 (-0.8)
+• Asia: Nikkei +1.2%, HSI +0.4%
 
-[Mark All Complete] [Skip Today]
+💡 IDEAS (3)
+1. NVDA 🟢 | Entry: $450 | Target: $465 | Stop: $442
+   Thesis: AI chip demand, data center growth
+
+2. TSLA 🔴 | Entry: $180 | Target: $168 | Stop: $185
+   Thesis: Delivery miss concerns, competition
+
+📅 CALENDAR
+• 8:30 AM: Initial Claims
+• NVDA earnings after close
+```
+
+**Brief Pre-Open (15:00 Madrid / 9:00 NY):**
+```
+📊 DAILY BRIEF - PRE-OPEN
+
+🔥 GAPPERS
+• AMD +3.2% (upgrade)
+• COIN -2.1% (SEC news)
+
+📈 OPTIONS FLOW
+• NVDA: Large call sweep 450c
+• TSLA: Put buying 175p
+
+💡 FINAL IDEAS
+[Ideas actualizadas con data pre-market]
 ```
 
 ---
@@ -527,7 +625,18 @@ Error: Telegram bot token invalid
 2. Asegurar que el bot está iniciado (`/start`)
 3. Verificar `TELEGRAM_CHAT_ID`
 
-### 11.3 Error de Claude API
+### 11.3 Error de Grok/xAI API
+
+```
+Error: XAI_API_KEY not found
+```
+
+**Solución:**
+1. Verificar que `.env` tiene `XAI_API_KEY=xai-...`
+2. Confirmar el formato correcto de la key
+3. Verificar créditos en [xAI Console](https://console.x.ai/)
+
+### 11.4 Error de Claude API
 
 ```
 Error: Anthropic API authentication failed
@@ -536,9 +645,9 @@ Error: Anthropic API authentication failed
 **Solución:**
 1. Verificar `ANTHROPIC_API_KEY`
 2. Verificar que la cuenta tiene créditos
-3. El sistema funciona sin Claude (usa solo FinTwitBERT)
+3. Sin Claude, el Morning Research Agent no funcionará
 
-### 11.4 Market Gate Siempre Cerrado
+### 11.5 Market Gate Siempre Cerrado
 
 ```
 Gate status: CLOSED - Outside trading hours
@@ -549,10 +658,10 @@ Gate status: CLOSED - Outside trading hours
 2. Que sea día de mercado (no fin de semana/feriado)
 3. Configuración `trading_start` y `trading_end`
 
-### 11.5 Sin Señales Generadas
+### 11.6 Sin Señales Generadas
 
 **Posibles causas:**
-1. Collectors no conectados
+1. GrokCollector no conectado
 2. Score threshold muy alto
 3. Gate cerrado
 4. Circuit breaker activado
@@ -565,7 +674,15 @@ print(f"Risk: {risk.get_status()}")
 print(f"Messages buffered: {orchestrator.buffer_size}")
 ```
 
-### 11.6 Tests Fallando
+### 11.7 Daily Briefs No Aparecen
+
+**Verificar:**
+1. `research.enabled: true` en settings.yaml
+2. `ANTHROPIC_API_KEY` configurado correctamente
+3. Horario correcto (12:00 y 15:00 hora Madrid)
+4. Directorio `data/research/briefs` existe
+
+### 11.8 Tests Fallando
 
 ```bash
 # Verificar dependencias
@@ -625,5 +742,5 @@ asyncio.run(check())
 
 ---
 
-*Manual generado: 2026-01-17*
-*Versión: 1.0.0*
+*Manual actualizado: 2026-01-18*
+*Versión: 2.0.0 (Morning Research Agent integrado)*
