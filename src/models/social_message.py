@@ -12,6 +12,7 @@ class SourceType(str, Enum):
     REDDIT = "reddit"
     STOCKTWITS = "stocktwits"
     NEWS = "news"
+    GROK = "grok"
 
 
 # Common crypto tickers to exclude
