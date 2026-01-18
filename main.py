@@ -16,6 +16,19 @@ from src.notifications import TelegramNotifier, AlertFormatter
 from src.notifications.models import Alert, AlertType
 from src.analyzers import AnalyzerManager, SentimentAnalyzer, ClaudeAnalyzer
 from src.models.social_message import SocialMessage
+from src.validators import TechnicalValidator
+from src.scoring import (
+    SignalScorer,
+    SourceCredibilityManager,
+    TimeFactorCalculator,
+    ConfluenceDetector,
+    DynamicWeightCalculator,
+    RecommendationBuilder,
+)
+from src.gate import MarketGate
+from src.risk import RiskManager
+from src.journal import JournalManager
+from src.execution import TradeExecutor
 
 
 # Configure logging
@@ -280,6 +293,118 @@ def initialize_collectors(settings: Settings, alpaca_client: AlpacaClient) -> Co
     logger.info(f"✓ Collectors initialized: {', '.join(collector_names)} ({len(collectors)}/{3})")
 
     return CollectorManager(collectors=collectors)
+
+
+def initialize_pipeline_components(
+    settings: Settings,
+    alpaca_client: AlpacaClient,
+) -> dict:
+    """Initialize pipeline components (Layers 3-6).
+
+    Args:
+        settings: Loaded settings object.
+        alpaca_client: Connected Alpaca client.
+
+    Returns:
+        Dict with: scorer, validator, gate, risk_manager, journal, executor.
+    """
+    # Layer 4: SignalScorer (requires 5 sub-components)
+    credibility_manager = SourceCredibilityManager(
+        tier1_sources=settings.scoring.tier1_sources,
+        tier1_multiplier=settings.scoring.credibility_tier1_multiplier,
+        tier2_multiplier=settings.scoring.credibility_tier2_multiplier,
+        tier3_multiplier=settings.scoring.credibility_tier3_multiplier,
+    )
+
+    time_calculator = TimeFactorCalculator(
+        timezone=settings.system.timezone,
+        premarket_factor=settings.scoring.premarket_factor,
+        afterhours_factor=settings.scoring.afterhours_factor,
+        earnings_factor=settings.scoring.earnings_factor,
+        earnings_proximity_days=settings.scoring.earnings_proximity_days,
+    )
+
+    confluence_detector = ConfluenceDetector(
+        window_minutes=settings.scoring.confluence_window_minutes,
+        bonus_2_signals=settings.scoring.confluence_bonus_2_signals,
+        bonus_3_signals=settings.scoring.confluence_bonus_3_signals,
+    )
+
+    weight_calculator = DynamicWeightCalculator(
+        base_sentiment_weight=settings.scoring.base_sentiment_weight,
+        base_technical_weight=settings.scoring.base_technical_weight,
+        strong_trend_adx=settings.scoring.strong_trend_adx,
+        weak_trend_adx=settings.scoring.weak_trend_adx,
+    )
+
+    recommendation_builder = RecommendationBuilder(
+        default_stop_loss_percent=settings.scoring.default_stop_loss_percent,
+        default_risk_reward_ratio=settings.scoring.default_risk_reward_ratio,
+        tier_strong_threshold=settings.scoring.tier_strong_threshold,
+        tier_moderate_threshold=settings.scoring.tier_moderate_threshold,
+        tier_weak_threshold=settings.scoring.tier_weak_threshold,
+        position_size_strong=settings.scoring.position_size_strong,
+        position_size_moderate=settings.scoring.position_size_moderate,
+        position_size_weak=settings.scoring.position_size_weak,
+    )
+
+    signal_scorer = SignalScorer(
+        credibility_manager=credibility_manager,
+        time_calculator=time_calculator,
+        confluence_detector=confluence_detector,
+        weight_calculator=weight_calculator,
+        recommendation_builder=recommendation_builder,
+    )
+    logger.info("✓ SignalScorer initialized (5 sub-components)")
+
+    # Layer 3: TechnicalValidator
+    technical_validator = TechnicalValidator(
+        alpaca_client=alpaca_client,
+        veto_mode=settings.validators.technical.veto_mode,
+        rsi_overbought=settings.validators.technical.rsi_overbought,
+        rsi_oversold=settings.validators.technical.rsi_oversold,
+        adx_trend_threshold=settings.validators.technical.adx_trend_threshold,
+        lookback_bars=settings.validators.technical.lookback_bars,
+        timeframe=settings.validators.technical.timeframe,
+        options_volume_spike_ratio=settings.validators.technical.options_volume_spike_ratio,
+        iv_rank_warning_threshold=settings.validators.technical.iv_rank_warning_threshold,
+    )
+    logger.info("✓ TechnicalValidator initialized")
+
+    # Layer 0: MarketGate
+    market_gate = MarketGate(
+        alpaca_client=alpaca_client,
+        settings=settings.market_gate,
+    )
+    logger.info("✓ MarketGate initialized")
+
+    # Layer 5: RiskManager
+    risk_manager = RiskManager(
+        max_position_value=settings.risk_settings.max_position_value,
+        max_daily_loss=settings.risk_settings.max_daily_loss,
+        unrealized_warning_threshold=settings.risk_settings.unrealized_warning_threshold,
+    )
+    logger.info("✓ RiskManager initialized")
+
+    # Observability: JournalManager
+    journal_manager = JournalManager(settings=settings.journal)
+    logger.info("✓ JournalManager initialized")
+
+    # Layer 6: TradeExecutor
+    trade_executor = TradeExecutor(
+        alpaca_client=alpaca_client,
+        risk_manager=risk_manager,
+    )
+    logger.info("✓ TradeExecutor initialized")
+
+    return {
+        "scorer": signal_scorer,
+        "validator": technical_validator,
+        "gate": market_gate,
+        "risk_manager": risk_manager,
+        "journal": journal_manager,
+        "executor": trade_executor,
+    }
 
 
 async def main():

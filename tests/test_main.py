@@ -155,3 +155,22 @@ def test_initialize_collectors_success():
                     assert collector_manager is not None
                     # Should create Stocktwits (no auth needed)
                     mock_st.assert_called_once()
+
+
+def test_initialize_pipeline_components_success():
+    """Test successful pipeline component initialization."""
+    from main import initialize_pipeline_components
+    from src.config.settings import Settings
+    from src.execution.alpaca_client import AlpacaClient
+
+    settings = Settings.from_yaml(Path("config/settings.yaml"))
+    mock_alpaca = MagicMock(spec=AlpacaClient)
+
+    components = initialize_pipeline_components(settings, mock_alpaca)
+
+    assert "scorer" in components
+    assert "validator" in components
+    assert "gate" in components
+    assert "risk_manager" in components
+    assert "journal" in components
+    assert "executor" in components
