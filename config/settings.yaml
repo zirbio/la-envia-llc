@@ -23,6 +23,21 @@ collectors:
     enabled: true
     refresh_interval_seconds: 30
 
+  grok:
+    enabled: true
+    refresh_interval_seconds: 30
+    max_results_per_query: 20
+    search_queries:
+      - "$NVDA"
+      - "$TSLA"
+      - "$AMD"
+      - "$AAPL"
+      - "$META"
+      - "unusual options activity"
+      - "dark pool"
+      - "from:unusual_whales"
+      - "from:DeItaone"
+
 risk:
   circuit_breakers:
     per_trade:
@@ -115,6 +130,17 @@ scoring:
   tier1_sources:
     - unusual_whales
     - optionsflow
+
+  # Dynamic credibility settings
+  tier1_seeds:
+    - unusual_whales
+    - DeItaone
+    - FirstSquawk
+    - optionsflow
+    - zerohedge
+  min_signals_for_dynamic: 5
+  evaluation_window_minutes: 30
+  success_threshold_percent: 1.0
 
 # CAPA 5: Risk Management Settings
 risk_settings:

@@ -14,16 +14,18 @@ sys.path.insert(0, str(src_path))
 from dotenv import load_dotenv
 
 from src.config.settings import Settings
-from src.collectors import CollectorManager, StocktwitsCollector, RedditCollector
+from src.collectors import GrokCollector
 from src.execution.alpaca_client import AlpacaClient
 from src.notifications import TelegramNotifier, AlertFormatter
 from src.notifications.models import Alert, AlertType
-from src.analyzers import AnalyzerManager, SentimentAnalyzer, ClaudeAnalyzer
+from src.analyzers import ClaudeAnalyzer
 from src.models.social_message import SocialMessage
 from src.validators import TechnicalValidator
 from src.scoring import (
     SignalScorer,
-    SourceCredibilityManager,
+    SourceProfileStore,
+    DynamicCredibilityManager,
+    SignalOutcomeTracker,
     TimeFactorCalculator,
     ConfluenceDetector,
     DynamicWeightCalculator,
@@ -55,6 +57,7 @@ def validate_env_vars() -> None:
         "ALPACA_API_KEY",
         "ALPACA_SECRET_KEY",
         "ANTHROPIC_API_KEY",
+        "XAI_API_KEY",
     ]
 
     missing = [var for var in required_vars if not os.getenv(var)]
@@ -72,6 +75,7 @@ def create_data_dirs() -> None:
         Path("data/signals"),
         Path("data/cache"),
         Path("data/backtest_results"),
+        Path("data/sources"),
     ]
 
     for dir_path in dirs:
@@ -177,32 +181,20 @@ async def initialize_infrastructure(settings: Settings) -> tuple[AlpacaClient, T
     return alpaca_client, telegram
 
 
-async def initialize_analyzers(settings: Settings) -> AnalyzerManager:
-    """Initialize analysis components (FinTwitBERT + Claude).
+async def initialize_claude_analyzer(settings: Settings) -> ClaudeAnalyzer:
+    """Initialize Claude analyzer for deep analysis.
+
+    Note: Grok provides sentiment analysis, so FinTwitBERT is no longer needed.
 
     Args:
         settings: Loaded settings object.
 
     Returns:
-        AnalyzerManager instance.
+        ClaudeAnalyzer instance.
 
     Raises:
-        SystemExit: If model download or API connection fails.
+        SystemExit: If API connection fails.
     """
-    # Initialize SentimentAnalyzer
-    try:
-        sentiment_analyzer = SentimentAnalyzer(
-            model_name=settings.analyzers.sentiment.model,
-            batch_size=settings.analyzers.sentiment.batch_size,
-        )
-        logger.info("✓ FinTwitBERT model loaded")
-
-    except Exception as e:
-        logger.error(f"Failed to load FinTwitBERT model: {e}")
-        logger.error("Check internet connection for model download")
-        sys.exit(1)
-
-    # Initialize ClaudeAnalyzer
     try:
         claude_analyzer = ClaudeAnalyzer(
             api_key=os.getenv("ANTHROPIC_API_KEY"),
@@ -227,77 +219,37 @@ async def initialize_analyzers(settings: Settings) -> AnalyzerManager:
         logger.error("Check ANTHROPIC_API_KEY in .env")
         sys.exit(1)
 
-    # Create AnalyzerManager
-    analyzer_manager = AnalyzerManager(
-        sentiment_analyzer=sentiment_analyzer,
-        claude_analyzer=claude_analyzer,
-        min_sentiment_confidence=settings.analyzers.sentiment.min_confidence,
-        enable_deep_analysis=settings.analyzers.claude.enabled,
-    )
-
-    return analyzer_manager
+    return claude_analyzer
 
 
-def initialize_collectors(settings: Settings, alpaca_client: AlpacaClient) -> CollectorManager:
-    """Initialize data collectors.
+async def initialize_grok_collector(settings: Settings) -> GrokCollector:
+    """Initialize and connect Grok collector for X/Twitter data.
 
     Args:
         settings: Loaded settings object.
-        alpaca_client: Connected Alpaca client for news.
 
     Returns:
-        CollectorManager with available collectors.
+        Connected GrokCollector instance.
 
     Raises:
-        SystemExit: If no collectors available.
+        SystemExit: If initialization or connection fails.
     """
-    collectors = []
-
-    # Stocktwits (no auth required)
-    if settings.collectors.stocktwits.enabled:
-        stocktwits = StocktwitsCollector(
-            watchlist=["AAPL", "NVDA", "TSLA", "AMD", "META"],
-            refresh_interval=settings.collectors.stocktwits.refresh_interval_seconds,
+    try:
+        grok_settings = settings.collectors.grok
+        grok = GrokCollector(
+            api_key=os.getenv("XAI_API_KEY"),
+            search_queries=grok_settings.search_queries,
+            refresh_interval=grok_settings.refresh_interval_seconds,
+            max_results_per_query=grok_settings.max_results_per_query,
         )
-        collectors.append(stocktwits)
-        logger.info("✓ Stocktwits collector initialized")
+        await grok.connect()
+        logger.info("✓ GrokCollector initialized and connected")
+        return grok
 
-    # Alpaca News (uses existing client)
-    # TODO: Add AlpacaNewsCollector when implemented
-
-    # Reddit (optional - skip if no credentials)
-    if settings.collectors.reddit.enabled:
-        reddit_id = os.getenv("REDDIT_CLIENT_ID")
-        reddit_secret = os.getenv("REDDIT_CLIENT_SECRET")
-
-        if reddit_id and reddit_secret:
-            try:
-                reddit = RedditCollector(
-                    subreddits=["wallstreetbets", "stocks", "options"],
-                    client_id=reddit_id,
-                    client_secret=reddit_secret,
-                    user_agent=settings.reddit_api.user_agent,
-                    use_streaming=settings.collectors.reddit.use_streaming,
-                )
-                collectors.append(reddit)
-                logger.info("✓ Reddit collector initialized")
-            except Exception as e:
-                logger.warning(f"Reddit collector init failed: {e}")
-                logger.warning("Continuing without Reddit")
-        else:
-            logger.warning("Reddit credentials not found - skipping Reddit collector")
-            logger.warning("Set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET to enable")
-
-    # Verify we have at least one collector
-    if not collectors:
-        logger.error("No collectors available")
-        logger.error("At least Stocktwits should work")
+    except Exception as e:
+        logger.error(f"Failed to initialize GrokCollector: {e}")
+        logger.error("Check XAI_API_KEY in .env")
         sys.exit(1)
-
-    collector_names = [c.__class__.__name__ for c in collectors]
-    logger.info(f"✓ Collectors initialized: {', '.join(collector_names)} ({len(collectors)}/{3})")
-
-    return CollectorManager(collectors=collectors)
 
 
 def initialize_pipeline_components(
@@ -311,16 +263,30 @@ def initialize_pipeline_components(
         alpaca_client: Connected Alpaca client.
 
     Returns:
-        Dict with: scorer, validator, gate, risk_manager, journal, executor.
+        Dict with: scorer, validator, gate, risk_manager, journal, executor,
+                   profile_store, credibility_manager, outcome_tracker.
     """
-    # Layer 4: SignalScorer (requires 5 sub-components)
-    credibility_manager = SourceCredibilityManager(
-        tier1_sources=settings.scoring.tier1_sources,
-        tier1_multiplier=settings.scoring.credibility_tier1_multiplier,
-        tier2_multiplier=settings.scoring.credibility_tier2_multiplier,
-        tier3_multiplier=settings.scoring.credibility_tier3_multiplier,
-    )
+    # Dynamic credibility system (replaces static SourceCredibilityManager)
+    profile_store = SourceProfileStore(data_dir=Path("data/sources"))
+    logger.info("✓ SourceProfileStore initialized")
 
+    credibility_manager = DynamicCredibilityManager(
+        profile_store=profile_store,
+        min_signals_for_ranking=settings.scoring.min_signals_for_dynamic,
+        tier1_sources=settings.scoring.tier1_seeds,
+        tier1_multiplier=settings.scoring.credibility_tier1_multiplier,
+    )
+    logger.info("✓ DynamicCredibilityManager initialized")
+
+    outcome_tracker = SignalOutcomeTracker(
+        credibility_manager=credibility_manager,
+        alpaca_client=alpaca_client,
+        evaluation_window_minutes=settings.scoring.evaluation_window_minutes,
+        success_threshold_percent=settings.scoring.success_threshold_percent,
+    )
+    logger.info("✓ SignalOutcomeTracker initialized")
+
+    # Layer 4: SignalScorer (requires sub-components)
     time_calculator = TimeFactorCalculator(
         timezone=settings.system.timezone,
         premarket_factor=settings.scoring.premarket_factor,
@@ -409,34 +375,39 @@ def initialize_pipeline_components(
         "risk_manager": risk_manager,
         "journal": journal_manager,
         "executor": trade_executor,
+        "profile_store": profile_store,
+        "credibility_manager": credibility_manager,
+        "outcome_tracker": outcome_tracker,
     }
 
 
 def initialize_orchestrator(
     settings: Settings,
-    collector_manager: CollectorManager,
-    analyzer_manager: AnalyzerManager,
+    grok_collector: GrokCollector,
+    claude_analyzer: ClaudeAnalyzer,
     components: dict,
 ) -> TradingOrchestrator:
     """Initialize TradingOrchestrator.
 
     Args:
         settings: Loaded settings object.
-        collector_manager: Initialized collector manager.
-        analyzer_manager: Initialized analyzer manager.
+        grok_collector: Initialized Grok collector.
+        claude_analyzer: Initialized Claude analyzer.
         components: Dict with pipeline components.
 
     Returns:
         TradingOrchestrator instance.
     """
     orchestrator = TradingOrchestrator(
-        collector_manager=collector_manager,
-        analyzer_manager=analyzer_manager,
+        grok_collector=grok_collector,
+        claude_analyzer=claude_analyzer,
         technical_validator=components["validator"],
         signal_scorer=components["scorer"],
         risk_manager=components["risk_manager"],
         market_gate=components["gate"],
         trade_executor=components["executor"],
+        credibility_manager=components["credibility_manager"],
+        outcome_tracker=components["outcome_tracker"],
         settings=settings.orchestrator,
     )
     logger.info("✓ TradingOrchestrator initialized")
@@ -453,26 +424,29 @@ async def main():
     # Phase 2: Core Infrastructure
     alpaca_client, telegram = await initialize_infrastructure(settings)
 
-    # Phase 3: Analysis Components
-    analyzer_manager = await initialize_analyzers(settings)
+    # Phase 3: Claude Analyzer (Grok provides sentiment)
+    claude_analyzer = await initialize_claude_analyzer(settings)
 
-    # Phase 4: Collectors
-    collector_manager = initialize_collectors(settings, alpaca_client)
+    # Phase 4: Grok Collector (replaces old collectors)
+    grok_collector = await initialize_grok_collector(settings)
 
-    # Phase 5: Pipeline Components
+    # Phase 5: Pipeline Components (including dynamic credibility)
     components = initialize_pipeline_components(settings, alpaca_client)
 
     # Phase 6: Orchestrator
     orchestrator = initialize_orchestrator(
         settings,
-        collector_manager,
-        analyzer_manager,
+        grok_collector,
+        claude_analyzer,
         components,
     )
 
+    # Get outcome tracker for evaluation loop
+    outcome_tracker = components["outcome_tracker"]
+
     # Start system
     logger.info("=" * 60)
-    logger.info("🚀 All components initialized successfully")
+    logger.info("All components initialized successfully")
     logger.info("Starting TradingOrchestrator...")
     logger.info("=" * 60)
 
@@ -483,10 +457,12 @@ async def main():
 
         # Keep running until interrupted
         while orchestrator.is_running:
+            # Evaluate pending signal outcomes periodically
+            await outcome_tracker.evaluate_pending()
             await asyncio.sleep(1)
 
     except KeyboardInterrupt:
-        logger.info("\n⚠️  Shutdown requested...")
+        logger.info("\nShutdown requested...")
 
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
@@ -500,13 +476,22 @@ async def main():
         await orchestrator.stop()
         logger.info("✓ Orchestrator stopped")
 
+        # Disconnect Grok collector
+        await grok_collector.disconnect()
+        logger.info("✓ GrokCollector disconnected")
+
         # Disconnect infrastructure
         await alpaca_client.disconnect()
         logger.info("✓ Alpaca disconnected")
 
         # Final notification
         try:
-            await telegram.send_alert("🛑 System shutdown complete")
+            await telegram.send_alert(
+                Alert(
+                    alert_type=AlertType.SYSTEM,
+                    message="System shutdown complete"
+                )
+            )
             logger.info("✓ Shutdown notification sent")
         except Exception:
             pass  # Ignore telegram errors during shutdown

@@ -18,13 +18,14 @@ async def test_full_startup_sequence():
             "ALPACA_API_KEY": "test_key",
             "ALPACA_SECRET_KEY": "test_secret",
             "ANTHROPIC_API_KEY": "test_anthropic",
+            "XAI_API_KEY": "test_xai_key",
             "TELEGRAM_BOT_TOKEN": "test_token",
             "TELEGRAM_CHAT_ID": "123456",
         }):
             with patch("main.Settings.from_yaml", return_value=settings):
                 with patch("main.AlpacaClient") as mock_alpaca:
                     with patch("main.TelegramNotifier") as mock_telegram:
-                        with patch("main.SentimentAnalyzer"):
+                        with patch("main.GrokCollector") as mock_grok:
                             with patch("main.ClaudeAnalyzer") as mock_claude:
                                 with patch("main.TradingOrchestrator") as mock_orch:
                                     # Setup mocks
@@ -38,6 +39,10 @@ async def test_full_startup_sequence():
                                     telegram_instance = mock_telegram.return_value
                                     telegram_instance.start = AsyncMock()
                                     telegram_instance.send_alert = AsyncMock()
+
+                                    grok_instance = mock_grok.return_value
+                                    grok_instance.connect = AsyncMock()
+                                    grok_instance.disconnect = AsyncMock()
 
                                     claude_instance = mock_claude.return_value
                                     claude_instance.analyze = MagicMock(
@@ -56,7 +61,9 @@ async def test_full_startup_sequence():
                                     # Verify all phases executed
                                     alpaca_instance.connect.assert_called_once()
                                     telegram_instance.start.assert_called_once()
+                                    grok_instance.connect.assert_called_once()
                                     claude_instance.analyze.assert_called_once()
                                     orch_instance.start.assert_called_once()
                                     orch_instance.stop.assert_called_once()
+                                    grok_instance.disconnect.assert_called_once()
                                     alpaca_instance.disconnect.assert_called_once()

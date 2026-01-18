@@ -74,3 +74,9 @@ class TestSocialMessage:
         )
         tickers = msg.extract_tickers(exclude_crypto=False)
         assert tickers == ["BTC", "ETH", "AAPL"]
+
+
+def test_grok_source_type_exists():
+    """Verify GROK source type exists for Grok API integration."""
+    from src.models.social_message import SourceType
+    assert SourceType.GROK == "grok"
